@@ -1,6 +1,13 @@
-cmake_minimum_required(VERSION 3.17)
-project(tfutils)
+CMAKE_MINIMUM_REQUIRED(VERSION 3.17)
+PROJECT(tfutils)
 
-set(CMAKE_CXX_STANDARD 17)
+SET(CMAKE_CXX_STANDARD 17)
 
-add_executable(tfutils main.cpp)
+ADD_DEFINITIONS("-fPIC")
+
+SET(ROOT_SYSTEM "/usr")
+INCLUDE_DIRECTORIES(${ROOT_SYSTEM}/include/qt)
+LINK_DIRECTORIES(${ROOT_SYSTEM}/lib)
+
+ADD_EXECUTABLE(tfutils main.cpp)
+TARGET_LINK_LIBRARIES(tfutils Qt5Xml Qt5Core)

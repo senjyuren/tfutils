@@ -7,7 +7,7 @@ class OSRemove : public AbstractCommand {
 public:
   using AbstractCommand::AbstractCommand;
 
-  Jint execute(const UP<tfutils::ICommandArgs> &v) override {
+  Jint execute(UP<ICommandArgs> const &v) override {
     if (v->isEmpty())
       return -1;
     return File::remove((*v)[0]);
@@ -24,9 +24,9 @@ private:
   Jchar mBuffer[SIZE_BUFFER];
 
 public:
-  using AbstractCommand::AbstractCommand;
+  OSCopy() : AbstractCommand(), mBuffer() {}
 
-  OSCopy() : mBuffer() {}
+  explicit OSCopy(Jchar const *v) : AbstractCommand(v), mBuffer() {}
 
   Jint execute(UP<ICommandArgs> const &v) override {
     Jint retLen = 0;

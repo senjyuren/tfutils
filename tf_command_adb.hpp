@@ -28,13 +28,13 @@ public:
     auto &&arg = (*v)[0];
     Log::info("ready to operate %s, format: %s, output: %s", arg, format, output);
 
-    auto &&get = String::format(COMMAND_GET_LIST, arg, format);
+    auto &&get = String<>::format(COMMAND_GET_LIST, arg, format);
     auto &&num = System(get.data());
     auto &&all = num.getRows();
 
     auto &&prg = Program(all.size());
     for (auto row : all) {
-      auto &&mat = String::format(COMMAND_PULL_LOCAL, row.getRow(), output);
+      auto &&mat = String<>::format(COMMAND_PULL_LOCAL, row.getRow(), output);
       auto &&sys = System(mat.data());
       prg.updateOne();
     }
@@ -58,13 +58,13 @@ public:
     auto &&format = (*v)[1];
     Log::info("ready to operate %s, format: %s", path, format);
 
-    auto &&get = String::format(COMMAND_GET_LIST, path, format);
+    auto &&get = String<>::format(COMMAND_GET_LIST, path, format);
     auto &&num = System(get.data());
     auto &&all = num.getRows();
 
     auto &&prg = Program(all.size());
     for (auto row : all) {
-      auto &&mat = String::format(COMMAND_REMOVE_LOCAL, row.getRow());
+      auto &&mat = String<>::format(COMMAND_REMOVE_LOCAL, row.getRow());
       auto &&sys = System(mat.data());
       prg.updateOne();
     }
@@ -83,20 +83,24 @@ private:
   UP<ICommandArgs> mArgs;
 
 public:
-  using AbstractCommand::AbstractCommand;
+  ADBScreenCap() : AbstractCommand(), mArgs(new CommandArgs<SIZE_COMMAND_ARGS>()) {
+    this->mArgs->push(COMMAND_PATH);
+    this->mArgs->push(COMMAND_FILE);
+  }
 
-  ADBScreenCap() : mArgs(new CommandArgs<SIZE_COMMAND_ARGS>()) {
-    this->mArgs->add(COMMAND_PATH);
-    this->mArgs->add(COMMAND_FILE);
+  explicit ADBScreenCap(Jchar const *v)
+      : AbstractCommand(v), mArgs(new CommandArgs<SIZE_COMMAND_ARGS>()) {
+    this->mArgs->push(COMMAND_PATH);
+    this->mArgs->push(COMMAND_FILE);
   }
 
   Jint execute(UP<ICommandArgs> const &v) override {
     SP<AbstractCommand> executor;
 
     if (v->getLength() == 1)
-      this->mArgs->add((*v)[0]);
+      this->mArgs->push((*v)[0]);
 
-    auto &&cmd = String::format(COMMAND_SCREENCAP, COMMAND_PATH, COMMAND_FILE);
+    auto &&cmd = String<>::format(COMMAND_SCREENCAP, COMMAND_PATH, COMMAND_FILE);
     auto &&sys = System(cmd.data());
 
     executor = make<ADBPull>();

@@ -1,9 +1,15 @@
 #ifndef TFUTILS_TF_CORE_HPP
 #define TFUTILS_TF_CORE_HPP
 
+#include <cstring>
+#include <filesystem>
 #include <iostream>
+#include <memory>
 
 #include <list>
+#include <string>
+
+#include <QtXml/QtXml>
 
 using Jchar = char;
 using Jint = int;

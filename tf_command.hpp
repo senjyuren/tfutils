@@ -3,21 +3,7 @@
 
 namespace tfutils {
 
-struct ICommandArgs {
-  virtual ~ICommandArgs() = default;
-
-  virtual void add(Jchar const *v) = 0;
-
-  virtual Jchar *operator[](Jint v) = 0;
-
-  virtual Jint getSize() = 0;
-
-  virtual Jint getLength() = 0;
-
-  virtual Jbool isEmpty() = 0;
-
-  virtual void clean() = 0;
-};
+using ICommandArgs = IBuffer<Jchar const *>;
 
 template <Jint Size> class CommandArgs : public ICommandArgs {
 private:
@@ -28,7 +14,7 @@ private:
 public:
   CommandArgs() : mArgsSize(Size), mArgsLength(), mArgs() {}
 
-  void add(Jchar const *v) override {
+  void push(Jchar const *v) override {
     if (this->mArgsLength >= this->mArgsSize)
       return;
 
@@ -36,7 +22,9 @@ public:
     ++this->mArgsLength;
   }
 
-  Jchar *operator[](Jint v) override { return const_cast<Jchar *>(this->mArgs[v]); }
+  Jchar const *operator[](Jint v) override { return const_cast<Jchar *>(this->mArgs[v]); }
+
+  Jchar const *const *operator*() override { return this->mArgs; };
 
   Jint getSize() override { return this->mArgsSize; }
 
@@ -57,6 +45,8 @@ public:
   explicit AbstractCommand(Jchar const *v) : mName(v) {}
 
   virtual ~AbstractCommand() = default;
+
+  virtual Jbool isHelp() { return false; }
 
   virtual Jchar const *getName() { return this->mName; }
 
@@ -90,7 +80,7 @@ public:
     auto &&name = this->mArgs[1];
     this->mCommandArgs->clean();
     for (i = 2; i < this->mArgc; ++i)
-      this->mCommandArgs->add(this->mArgs[i]);
+      this->mCommandArgs->push(this->mArgs[i]);
 
     for (auto &&command : this->mCommands) {
       if (strcmp(command->getName(), name) != 0)
@@ -98,6 +88,15 @@ public:
 
       ret = command->execute(this->mCommandArgs);
       break;
+    }
+
+    if (ret != 0) {
+      for (auto &&command : this->mCommands) {
+        if (!command->isHelp())
+          continue;
+        command->execute(this->mCommandArgs);
+        break;
+      }
     }
 
     return ret;

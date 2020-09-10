@@ -3,20 +3,9 @@
 
 namespace tfutils {
 
-enum class GoogleCloudCSVTarget : Jbyte {
-  TRAIN = 0x00,
-  VALIDATION = 0x01,
-  TEST = 0x02,
-};
-
 class GoogleCloudCSVFormat {
 private:
   constexpr static Jint SIZE_ROW = 512;
-
-  constexpr static Jchar TARGET_TRAIN[] = "TRAIN";
-  constexpr static Jchar TARGET_VALIDATION[] = "VALIDATION";
-  constexpr static Jchar TARGET_TEST[] = "TEST";
-
   constexpr static Jchar FORMAT_ROW[] = "%s,%s/%s,%s,%.8f,%.8f,%.8f,%.8f,%.8f,%.8f,%.8f,%.8f\n";
 
   Jint mWidth;
@@ -28,16 +17,18 @@ private:
 
   Jchar const *mName;
   Jchar const *mLabel;
-  Jchar const *mSymbol;
+  Jchar const *mSymbolMark;
+  Jchar const *mSymbolPath;
   Jchar mFormatBuffer[SIZE_ROW];
 
 public:
   GoogleCloudCSVFormat(Jint width, Jint height, Jint x1, Jint y1, Jint x2, Jint y2,
-                       Jchar const *name, Jchar const *label, Jchar const *symbol)
+                       Jchar const *name, Jchar const *label, Jchar const *symbolMark,
+                       Jchar const *symbolPath)
       : mWidth(width), mHeight(height), mXmin(x1), mYmin(y1), mXmax(x2), mYmax(y2), mName(name),
-        mLabel(label), mSymbol(symbol), mFormatBuffer() {}
+        mLabel(label), mSymbolMark(symbolMark), mSymbolPath(symbolPath), mFormatBuffer() {}
 
-  Jchar const *getRow(GoogleCloudCSVTarget v) {
+  Jchar const *getRow() {
     Jfloat x1 = 0;
     Jfloat y1 = 0;
     Jfloat x2 = 0;
@@ -46,21 +37,6 @@ public:
     Jfloat y3 = 0;
     Jfloat x4 = 0;
     Jfloat y4 = 0;
-    Jchar const *tag = nullptr;
-
-    Jint len = 0;
-
-    switch (v) {
-    case GoogleCloudCSVTarget::TRAIN:
-      tag = TARGET_TRAIN;
-      break;
-    case GoogleCloudCSVTarget::VALIDATION:
-      tag = TARGET_VALIDATION;
-      break;
-    case GoogleCloudCSVTarget::TEST:
-      tag = TARGET_TEST;
-      break;
-    }
 
     x1 = static_cast<Jfloat>(this->mXmin) / static_cast<Jfloat>(this->mWidth);
     y1 = static_cast<Jfloat>(this->mYmin) / static_cast<Jfloat>(this->mHeight);
@@ -71,8 +47,9 @@ public:
     x4 = x1;
     y4 = y3;
 
-    len = snprintf(this->mFormatBuffer, sizeof(this->mFormatBuffer), FORMAT_ROW, tag, this->mName,
-                   this->mSymbol, this->mLabel, x1, y1, x2, y2, x3, y3, x4, y4);
+    auto &&len =
+        snprintf(this->mFormatBuffer, sizeof(this->mFormatBuffer), FORMAT_ROW, this->mSymbolMark,
+                 this->mSymbolPath, this->mName, this->mLabel, x1, y1, x2, y2, x3, y3, x4, y4);
     this->mFormatBuffer[len] = 0x00;
     return this->mFormatBuffer;
   }
@@ -82,14 +59,10 @@ class GoogleCloudCSV {
 private:
   constexpr static Jchar FILE_OPERATION_MODEL[] = "wb";
 
-  Jint mFileAll;
-  Jint mFileCurrent;
-
   FILE *mCSVFile;
 
 public:
-  explicit GoogleCloudCSV(Jint all, Jchar const *outfile)
-      : mFileAll(all), mFileCurrent(), mCSVFile() {
+  explicit GoogleCloudCSV(Jint all, Jchar const *outfile) : mCSVFile() {
     this->mCSVFile = fopen(outfile, FILE_OPERATION_MODEL);
   }
 
@@ -99,20 +72,483 @@ public:
   }
 
   void add(GoogleCloudCSVFormat &v) {
-    Jchar const *row = nullptr;
-
-    auto &&prog = static_cast<Jfloat>(this->mFileCurrent) / static_cast<Jfloat>(this->mFileAll);
-    if (prog <= 0.8)
-      row = v.getRow(GoogleCloudCSVTarget::TRAIN);
-    else if ((prog > 0.8) && (prog <= 0.9))
-      row = v.getRow(GoogleCloudCSVTarget::VALIDATION);
-    else if (prog > 0.9)
-      row = v.getRow(GoogleCloudCSVTarget::TEST);
+    auto &&row = v.getRow();
 
     auto rowLen = strlen(row);
     if (this->mCSVFile != nullptr)
       fwrite(row, rowLen, 1, this->mCSVFile);
-    ++this->mFileCurrent;
+  }
+};
+
+class LabelImageXML;
+
+class LabelImageXMLSize {
+private:
+  Jint mWidth;
+  Jint mHeight;
+  Jint mDepth;
+
+public:
+  friend LabelImageXML;
+
+  LabelImageXMLSize() : mWidth(), mHeight(), mDepth() {}
+
+  [[nodiscard]] Jint getWidth() const { return this->mWidth; }
+
+  [[nodiscard]] Jint getHeight() const { return this->mHeight; }
+
+  [[nodiscard]] Jint getDepth() const { return this->mDepth; }
+};
+
+class LabelImageXMLSource {
+private:
+  std::string mDatabase;
+
+public:
+  friend LabelImageXML;
+
+  LabelImageXMLSource() : mDatabase() {}
+
+  [[nodiscard]] std::string const &getDatabase() const { return this->mDatabase; }
+};
+
+class LabelImageXMLBndbox {
+private:
+  Jint mMinX;
+  Jint mMinY;
+  Jint mMaxX;
+  Jint mMaxY;
+
+public:
+  friend LabelImageXML;
+
+  LabelImageXMLBndbox() : mMinX(), mMinY(), mMaxX(), mMaxY() {}
+
+  [[nodiscard]] Jint getMinX() const { return this->mMinX; }
+
+  [[nodiscard]] Jint getMinY() const { return this->mMinY; }
+
+  [[nodiscard]] Jint getMaxX() const { return this->mMaxX; }
+
+  [[nodiscard]] Jint getMaxY() const { return this->mMaxY; }
+
+  void setMinX(Jint v) { this->mMinX = v; }
+
+  void setMinY(Jint v) { this->mMinY = v; }
+
+  void setMaxX(Jint v) { this->mMaxX = v; }
+
+  void setMaxY(Jint v) { this->mMaxY = v; }
+};
+
+class LabelImageXMLObject {
+private:
+  std::string mName;
+  std::string mPose;
+
+  Jint mTruncated;
+  Jint mDifficult;
+
+  LabelImageXMLBndbox mBndbox;
+
+public:
+  friend LabelImageXML;
+
+  LabelImageXMLObject() : mName(), mPose(), mTruncated(), mDifficult(), mBndbox() {}
+
+  [[nodiscard]] std::string const &getName() const { return this->mName; }
+
+  [[nodiscard]] std::string const &getPose() const { return this->mPose; }
+
+  [[nodiscard]] Jint getTruncated() const { return this->mTruncated; }
+
+  [[nodiscard]] Jint getDifficult() const { return this->mDifficult; }
+
+  [[nodiscard]] LabelImageXMLBndbox const &getBndbox() const { return this->mBndbox; }
+
+  void setBndbox(LabelImageXMLBndbox const &v) { this->mBndbox = v; }
+};
+
+class LabelImageXMLTarget {
+public:
+  constexpr static Jchar ROOT[] = "annotation";
+
+  constexpr static Jchar FOLDER[] = "folder";
+  constexpr static Jchar FILENAME[] = "filename";
+  constexpr static Jchar PATH[] = "path";
+  constexpr static Jchar SEGMENTED[] = "segmented";
+
+  constexpr static Jchar SOURCE[] = "source";
+  constexpr static Jchar S_DATABASE[] = "database";
+
+  constexpr static Jchar SIZE[] = "size";
+  constexpr static Jchar S_WIDTH[] = "width";
+  constexpr static Jchar S_HEIGHT[] = "height";
+  constexpr static Jchar S_DEPTH[] = "depth";
+
+  constexpr static Jchar OBJECT[] = "object";
+  constexpr static Jchar O_NAME[] = "name";
+  constexpr static Jchar O_POSE[] = "pose";
+  constexpr static Jchar O_TRUNCATED[] = "truncated";
+  constexpr static Jchar O_DIFFICULT[] = "difficult";
+  constexpr static Jchar O_BNDBOX[] = "bndbox";
+  constexpr static Jchar O_B_XMIN[] = "xmin";
+  constexpr static Jchar O_B_YMIN[] = "ymin";
+  constexpr static Jchar O_B_XMAX[] = "xmax";
+  constexpr static Jchar O_B_YMAX[] = "ymax";
+};
+
+class LabelImageXML {
+private:
+  constexpr static Jint SIZE_BUFFER = 256;
+  constexpr static Jchar MODEL_READ[] = "rb";
+
+  FILE *mXml;
+  Jchar mBuffer[SIZE_BUFFER];
+  std::string mXmlContent;
+
+  std::string mFolder;
+  std::string mFilename;
+  std::string mPath;
+
+  LabelImageXMLSource mSource;
+  LabelImageXMLSize mSize;
+
+  Jint mSegmented;
+  std::list<LabelImageXMLObject> mObjects;
+
+public:
+  explicit LabelImageXML(Jchar const *v)
+      : mXml(), mBuffer(), mXmlContent(), mFolder(), mFilename(), mPath(), mSource(), mSize(),
+        mSegmented(), mObjects() {
+    Jint i = 0;
+    Jint retLen = 0;
+
+    QDomDocument document;
+
+    if (v == nullptr)
+      return;
+
+    this->mXml = fopen(v, MODEL_READ);
+    if (this->mXml == nullptr)
+      return;
+
+    do {
+      retLen = fread(this->mBuffer, 1, sizeof(this->mBuffer), this->mXml);
+      if (retLen > 0)
+        this->mXmlContent.append(this->mBuffer, retLen);
+    } while (retLen == sizeof(this->mBuffer));
+
+    document.setContent(QString(this->mXmlContent.data()));
+    auto &&root = document.documentElement();
+
+    this->mFolder = root.firstChildElement(LabelImageXMLTarget::FOLDER).text().toStdString();
+    this->mFilename = root.firstChildElement(LabelImageXMLTarget::FILENAME).text().toStdString();
+    this->mPath = root.firstChildElement(LabelImageXMLTarget::PATH).text().toStdString();
+    this->mSegmented = root.firstChildElement(LabelImageXMLTarget::SEGMENTED).text().toInt();
+
+    auto &&source = root.firstChildElement(LabelImageXMLTarget::SOURCE);
+    this->mSource.mDatabase =
+        source.firstChildElement(LabelImageXMLTarget::S_DATABASE).text().toStdString();
+
+    auto &&size = root.firstChildElement(LabelImageXMLTarget::SIZE);
+    this->mSize.mWidth = size.firstChildElement(LabelImageXMLTarget::S_WIDTH).text().toInt();
+    this->mSize.mHeight = size.firstChildElement(LabelImageXMLTarget::S_HEIGHT).text().toInt();
+    this->mSize.mDepth = size.firstChildElement(LabelImageXMLTarget::S_DEPTH).text().toInt();
+
+    auto &&objects = root.elementsByTagName(LabelImageXMLTarget::OBJECT);
+    for (i = 0; i < objects.size(); ++i) {
+      auto &&object = objects.at(i);
+      auto &&bndbox = object.firstChildElement(LabelImageXMLTarget::O_BNDBOX);
+      auto &&temp = LabelImageXMLObject();
+
+      temp.mName = object.firstChildElement(LabelImageXMLTarget::O_NAME).text().toStdString();
+      temp.mPose = object.firstChildElement(LabelImageXMLTarget::O_POSE).text().toStdString();
+      temp.mTruncated = object.firstChildElement(LabelImageXMLTarget::O_TRUNCATED).text().toInt();
+      temp.mDifficult = object.firstChildElement(LabelImageXMLTarget::O_DIFFICULT).text().toInt();
+
+      temp.mBndbox.mMinX = bndbox.firstChildElement(LabelImageXMLTarget::O_B_XMIN).text().toInt();
+      temp.mBndbox.mMinY = bndbox.firstChildElement(LabelImageXMLTarget::O_B_YMIN).text().toInt();
+      temp.mBndbox.mMaxX = bndbox.firstChildElement(LabelImageXMLTarget::O_B_XMAX).text().toInt();
+      temp.mBndbox.mMaxY = bndbox.firstChildElement(LabelImageXMLTarget::O_B_YMAX).text().toInt();
+
+      this->mObjects.push_back(temp);
+    }
+  };
+
+  ~LabelImageXML() {
+    if (this->mXml != nullptr)
+      fclose(this->mXml);
+  }
+
+  [[nodiscard]] std::string const &getFolder() const { return this->mFolder; }
+
+  [[nodiscard]] std::string const &getFilename() const { return this->mFilename; }
+
+  [[nodiscard]] std::string const &getPath() const { return this->mPath; }
+
+  [[nodiscard]] LabelImageXMLSource const &getSource() const { return this->mSource; }
+
+  [[nodiscard]] LabelImageXMLSize const &getSize() const { return this->mSize; }
+
+  [[nodiscard]] Jint getSegmented() const { return this->mSegmented; }
+
+  [[nodiscard]] std::list<LabelImageXMLObject> const &getObjects() const { return this->mObjects; }
+
+  void addObject(LabelImageXMLObject const &v) { this->mObjects.push_back(v); }
+};
+
+enum LabelImageCoverCrop : Juint {
+  CROP_BASE = 0x01,
+  CROP_TOP_10 = CROP_BASE,
+  CROP_TOP_20 = CROP_BASE << 1u,
+  CROP_TOP_30 = CROP_BASE << 2u,
+  CROP_TOP_40 = CROP_BASE << 3u,
+  CROP_BOTTOM_10 = CROP_BASE << 4u,
+  CROP_BOTTOM_20 = CROP_BASE << 5u,
+  CROP_BOTTOM_30 = CROP_BASE << 6u,
+  CROP_BOTTOM_40 = CROP_BASE << 7u,
+  CROP_LEFT_10 = CROP_BASE << 8u,
+  CROP_LEFT_20 = CROP_BASE << 9u,
+  CROP_LEFT_30 = CROP_BASE << 10u,
+  CROP_LEFT_40 = CROP_BASE << 11u,
+  CROP_RIGHT_10 = CROP_BASE << 12u,
+  CROP_RIGHT_20 = CROP_BASE << 13u,
+  CROP_RIGHT_30 = CROP_BASE << 14u,
+  CROP_RIGHT_40 = CROP_BASE << 15u,
+};
+
+template <Juint Crop> class LabelImageConver {
+private:
+  template <Juint CropFun> static Jint cropTop(Jint minY, Jint maxY) {
+    auto &&ret = minY;
+    auto &&stepY = (maxY - minY) / 10;
+    if ((CropFun & CROP_TOP_10) == CROP_TOP_10)
+      ret += stepY;
+    else if ((CropFun & CROP_TOP_20) == CROP_TOP_20)
+      ret += stepY * 2;
+    else if ((CropFun & CROP_TOP_30) == CROP_TOP_30)
+      ret += stepY * 3;
+    else if ((CropFun & CROP_TOP_40) == CROP_TOP_40)
+      ret += stepY * 4;
+    return ret;
+  }
+
+  template <Juint CropFun> static Jint cropBottom(Jint minY, Jint maxY) {
+    auto &&ret = maxY;
+    auto &&stepY = (maxY - minY) / 10;
+    if ((CropFun & CROP_BOTTOM_10) == CROP_BOTTOM_10)
+      ret -= stepY;
+    else if ((CropFun & CROP_BOTTOM_20) == CROP_BOTTOM_20)
+      ret -= stepY * 2;
+    else if ((CropFun & CROP_BOTTOM_30) == CROP_BOTTOM_30)
+      ret -= stepY * 3;
+    else if ((CropFun & CROP_BOTTOM_40) == CROP_BOTTOM_40)
+      ret -= stepY * 4;
+    return ret;
+  }
+
+  template <Juint CropFun> static Jint cropLeft(Jint minX, Jint maxX) {
+    auto &&ret = minX;
+    auto &&stepX = (maxX - minX) / 10;
+    if ((CropFun & CROP_LEFT_10) == CROP_LEFT_10)
+      ret += stepX;
+    else if ((CropFun & CROP_LEFT_20) == CROP_LEFT_20)
+      ret += stepX * 2;
+    else if ((CropFun & CROP_LEFT_30) == CROP_LEFT_30)
+      ret += stepX * 3;
+    else if ((CropFun & CROP_LEFT_40) == CROP_LEFT_40)
+      ret += stepX * 4;
+    return ret;
+  }
+
+  template <Juint CropFun> static Jint cropRight(Jint minX, Jint maxX) {
+    auto &&ret = maxX;
+    auto &&stepX = (maxX - minX) / 10;
+    if ((CropFun & CROP_RIGHT_10) == CROP_RIGHT_10)
+      ret -= stepX;
+    else if ((CropFun & CROP_RIGHT_20) == CROP_RIGHT_20)
+      ret -= stepX * 2;
+    else if ((CropFun & CROP_RIGHT_30) == CROP_RIGHT_30)
+      ret -= stepX * 3;
+    else if ((CropFun & CROP_RIGHT_40) == CROP_RIGHT_40)
+      ret -= stepX * 4;
+    return ret;
+  }
+
+public:
+  explicit LabelImageConver(SP<LabelImageXML> const &v) {
+    Jint minX = 0;
+    Jint minY = 0;
+    Jint maxX = 0;
+    Jint maxY = 0;
+
+    auto bndbox = v->getObjects().front().getBndbox();
+    auto object = v->getObjects().front();
+
+    auto &&minXt = v->getObjects().front().getBndbox().getMinX();
+    auto &&minYt = v->getObjects().front().getBndbox().getMinY();
+    auto &&maxXt = v->getObjects().front().getBndbox().getMaxX();
+    auto &&maxYt = v->getObjects().front().getBndbox().getMaxY();
+
+    if (Crop & (CROP_TOP_10 | CROP_TOP_20 | CROP_TOP_30 | CROP_TOP_40))
+      minY = cropTop<Crop>(minYt, maxYt);
+    if (Crop & (CROP_BOTTOM_10 | CROP_BOTTOM_20 | CROP_BOTTOM_30 | CROP_BOTTOM_40))
+      maxY = cropBottom<Crop>(minYt, maxYt);
+    if (Crop & (CROP_LEFT_10 | CROP_LEFT_20 | CROP_LEFT_30 | CROP_LEFT_40))
+      minX = cropLeft<Crop>(minXt, maxXt);
+    if (Crop & (CROP_RIGHT_10 | CROP_RIGHT_20 | CROP_RIGHT_30 | CROP_RIGHT_40))
+      maxX = cropRight<Crop>(minXt, maxXt);
+
+    if (minX != 0)
+      bndbox.setMinX(minX);
+    if (minY != 0)
+      bndbox.setMinY(minY);
+    if (maxX != 0)
+      bndbox.setMaxX(maxX);
+    if (maxY != 0)
+      bndbox.setMaxY(maxY);
+
+    object.setBndbox(bndbox);
+    v->addObject(object);
+  }
+};
+
+class LabelImageXMLExporter {
+private:
+  constexpr static Jint SIZE_SPACE = 4;
+
+  constexpr static Jchar MODEL_WRITE[] = "wb";
+
+  FILE *mOutputFile;
+
+  static void stepAnnotation(QDomDocument &doc, QDomElement &root, SP<LabelImageXML> const &in) {
+    auto &&folder = doc.createElement(LabelImageXMLTarget::FOLDER);
+    auto &&filename = doc.createElement(LabelImageXMLTarget::FILENAME);
+    auto &&path = doc.createElement(LabelImageXMLTarget::PATH);
+    auto &&segmented = doc.createElement(LabelImageXMLTarget::SEGMENTED);
+
+    auto &&folderV = doc.createTextNode(in->getFolder().data());
+    folder.appendChild(folderV);
+    auto &&filenameV = doc.createTextNode(in->getFilename().data());
+    filename.appendChild(filenameV);
+    auto &&pathV = doc.createTextNode(in->getPath().data());
+    path.appendChild(pathV);
+    auto &&segmentedV = doc.createTextNode(std::to_string(in->getSegmented()).data());
+    segmented.appendChild(segmentedV);
+
+    root.appendChild(folder);
+    root.appendChild(filename);
+    root.appendChild(path);
+    root.appendChild(segmented);
+  }
+
+  static void stepSource(QDomDocument &doc, QDomElement &root, SP<LabelImageXML> const &in) {
+    auto &&source = doc.createElement(LabelImageXMLTarget::SOURCE);
+    auto &&database = doc.createElement(LabelImageXMLTarget::S_DATABASE);
+
+    auto &&databaseV = doc.createTextNode(in->getSource().getDatabase().data());
+    database.appendChild(databaseV);
+
+    source.appendChild(database);
+    root.appendChild(source);
+  }
+
+  static void stepSize(QDomDocument &doc, QDomElement &root, SP<LabelImageXML> const &in) {
+    auto &&size = doc.createElement(LabelImageXMLTarget::SIZE);
+    auto &&width = doc.createElement(LabelImageXMLTarget::S_WIDTH);
+    auto &&height = doc.createElement(LabelImageXMLTarget::S_HEIGHT);
+    auto &&depth = doc.createElement(LabelImageXMLTarget::S_DEPTH);
+
+    auto &&widthV = doc.createTextNode(std::to_string(in->getSize().getWidth()).data());
+    width.appendChild(widthV);
+    auto &&heightV = doc.createTextNode(std::to_string(in->getSize().getHeight()).data());
+    height.appendChild(heightV);
+    auto &&depthV = doc.createTextNode(std::to_string(in->getSize().getDepth()).data());
+    depth.appendChild(depthV);
+
+    size.appendChild(width);
+    size.appendChild(height);
+    size.appendChild(depth);
+    root.appendChild(size);
+  }
+
+  static void stepObjects(QDomDocument &doc, QDomElement &root, SP<LabelImageXML> const &in) {
+    auto &&objects = in->getObjects();
+
+    for (auto &&object : objects) {
+      auto &&tagObj = doc.createElement(LabelImageXMLTarget::OBJECT);
+
+      auto &&tagName = doc.createElement(LabelImageXMLTarget::O_NAME);
+      auto &&tagPose = doc.createElement(LabelImageXMLTarget::O_POSE);
+      auto &&tagTruncated = doc.createElement(LabelImageXMLTarget::O_TRUNCATED);
+      auto &&tagDifficult = doc.createElement(LabelImageXMLTarget::O_DIFFICULT);
+      auto &&tagBndbox = doc.createElement(LabelImageXMLTarget::O_BNDBOX);
+
+      auto &&tagXMin = doc.createElement(LabelImageXMLTarget::O_B_XMIN);
+      auto &&tagYMin = doc.createElement(LabelImageXMLTarget::O_B_YMIN);
+      auto &&tagXMax = doc.createElement(LabelImageXMLTarget::O_B_XMAX);
+      auto &&tagYMax = doc.createElement(LabelImageXMLTarget::O_B_YMAX);
+
+      auto &&tagNameV = doc.createTextNode(object.getName().data());
+      tagName.appendChild(tagNameV);
+      auto &&tagPoseV = doc.createTextNode(object.getPose().data());
+      tagPose.appendChild(tagPoseV);
+      auto &&tagTruncatedV = doc.createTextNode(std::to_string(object.getTruncated()).data());
+      tagTruncated.appendChild(tagTruncatedV);
+      auto &&tagDifficultV = doc.createTextNode(std::to_string(object.getDifficult()).data());
+      tagDifficult.appendChild(tagDifficultV);
+
+      auto &&tagXMinV = doc.createTextNode(std::to_string(object.getBndbox().getMinX()).data());
+      tagXMin.appendChild(tagXMinV);
+      auto &&tagYMinV = doc.createTextNode(std::to_string(object.getBndbox().getMinY()).data());
+      tagYMin.appendChild(tagYMinV);
+      auto &&tagXMaxV = doc.createTextNode(std::to_string(object.getBndbox().getMaxX()).data());
+      tagXMax.appendChild(tagXMaxV);
+      auto &&tagYMaxV = doc.createTextNode(std::to_string(object.getBndbox().getMaxY()).data());
+      tagYMax.appendChild(tagYMaxV);
+
+      tagBndbox.appendChild(tagXMin);
+      tagBndbox.appendChild(tagYMin);
+      tagBndbox.appendChild(tagXMax);
+      tagBndbox.appendChild(tagYMax);
+
+      tagObj.appendChild(tagName);
+      tagObj.appendChild(tagPose);
+      tagObj.appendChild(tagTruncated);
+      tagObj.appendChild(tagDifficult);
+      tagObj.appendChild(tagBndbox);
+      root.appendChild(tagObj);
+    }
+  }
+
+public:
+  explicit LabelImageXMLExporter(SP<LabelImageXML> const &input, Jchar const *output)
+      : mOutputFile() {
+    QDomDocument document;
+
+    if (output == nullptr)
+      return;
+
+    this->mOutputFile = fopen(output, MODEL_WRITE);
+    if (this->mOutputFile == nullptr)
+      return;
+
+    auto &&root = document.createElement(LabelImageXMLTarget::ROOT);
+    stepAnnotation(document, root, input);
+    stepSource(document, root, input);
+    stepSize(document, root, input);
+    stepObjects(document, root, input);
+    document.appendChild(root);
+
+    auto &&content = document.toString(SIZE_SPACE).toStdString();
+    fwrite(content.data(), content.size(), 1, this->mOutputFile);
+    fflush(this->mOutputFile);
+  }
+
+  ~LabelImageXMLExporter() {
+    if (this->mOutputFile != nullptr)
+      fclose(this->mOutputFile);
   }
 };
 

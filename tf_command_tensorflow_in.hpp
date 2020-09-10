@@ -56,10 +56,15 @@ private:
   constexpr static Jint SIZE_BUFFER = 128;
   constexpr static Jint SIZE_ARGS = 8;
 
-  constexpr static Jchar SYMBOL = '$';
+  constexpr static Jchar SYMBOL_MARK = '^';
+  constexpr static Jchar SYMBOL_PATH = '$';
   constexpr static Jchar MODEL_READ[] = "rb";
   constexpr static Jchar MODEL_WRITE[] = "wb";
   constexpr static Jchar NAME_TEMP[] = "temp.csv";
+
+  constexpr static Jchar TARGET_TRAIN[] = "TRAIN";
+  constexpr static Jchar TARGET_VALIDATION[] = "VALIDATION";
+  constexpr static Jchar TARGET_TEST[] = "TEST";
 
   Jchar mBuffer[SIZE_BUFFER];
 
@@ -85,6 +90,8 @@ public:
   Jint execute(UP<ICommandArgs> const &v) override {
     Jint i = 0;
     Jint retLen = 0;
+    Jfloat counts = 0;
+    Jfloat current = 0;
     SP<AbstractCommand> command;
 
     if (v->getLength() < 2)
@@ -102,10 +109,37 @@ public:
       retLen = fread(this->mBuffer, 1, sizeof(this->mBuffer), this->mOldFile);
       if (retLen > 0) {
         for (i = 0; i < retLen; ++i) {
-          if (this->mBuffer[i] != SYMBOL)
-            fwrite(&this->mBuffer[i], 1, 1, this->mNewFile);
-          else
+          if (this->mBuffer[i] == SYMBOL_MARK)
+            ++counts;
+        }
+      }
+    } while (retLen == sizeof(this->mBuffer));
+    fseek(this->mOldFile, 0, SEEK_SET);
+
+    do {
+      retLen = fread(this->mBuffer, 1, sizeof(this->mBuffer), this->mOldFile);
+      if (retLen > 0) {
+        for (i = 0; i < retLen; ++i) {
+          if (this->mBuffer[i] == SYMBOL_PATH) {
             fwrite(symbol, symbolLen, 1, this->mNewFile);
+          } else if (this->mBuffer[i] == SYMBOL_MARK) {
+            Jint targetLen = 0;
+            Jchar const *target = nullptr;
+            auto &&proportion = current / counts;
+
+            if (proportion <= 0.8)
+              target = TARGET_TRAIN;
+            else if ((proportion > 0.8) && (proportion <= 0.9))
+              target = TARGET_VALIDATION;
+            else
+              target = TARGET_TEST;
+
+            targetLen = strlen(target);
+            fwrite(target, targetLen, 1, this->mNewFile);
+            ++current;
+          } else {
+            fwrite(&this->mBuffer[i], 1, 1, this->mNewFile);
+          }
         }
 
         fflush(this->mNewFile);
@@ -133,41 +167,19 @@ public:
 
 class TensorflowCSV : public AbstractCommand {
 private:
-  constexpr static Jint SIZE_BUFFER = 128;
-  constexpr static Jint SIZE_CONTENT = 4096;
-
-  constexpr static Jchar MODEL[] = "rb";
-  constexpr static Jchar SYMBOL[] = "$";
   constexpr static Jchar SURRFIX[] = ".xml";
-
-  constexpr static Jchar TARGET_FILE_NAME[] = "filename";
-  constexpr static Jchar TARGET_SIZE[] = "size";
-  constexpr static Jchar TARGET_OBJECT[] = "object";
-  constexpr static Jchar TARGET_WIDTH[] = "width";
-  constexpr static Jchar TARGET_HEIGHT[] = "height";
-  constexpr static Jchar TARGET_BNDBOX[] = "bndbox";
-  constexpr static Jchar TARGET_NAME[] = "name";
-  constexpr static Jchar TARGET_X_MIN[] = "xmin";
-  constexpr static Jchar TARGET_Y_MIN[] = "ymin";
-  constexpr static Jchar TARGET_X_MAX[] = "xmax";
-  constexpr static Jchar TARGET_Y_MAX[] = "ymax";
-
-  Jchar mBuffer[SIZE_BUFFER];
-  UP<IString> mContent;
-
-  QDomDocument mDocument;
+  constexpr static Jchar SYMBOL_MARK[] = "^";
+  constexpr static Jchar SYMBOL_PATH[] = "$";
 
 public:
-  explicit TensorflowCSV(Jchar const *v)
-      : AbstractCommand(v), mBuffer(), mContent(new String<SIZE_CONTENT>()), mDocument() {}
+  using AbstractCommand::AbstractCommand;
 
   Jint execute(UP<ICommandArgs> const &v) override {
-    Jint i = 0;
-    Jint retLen = 0;
     Jchar const *target = nullptr;
 
     UP<File> file(new File());
     SP<GoogleCloudCSV> csv = nullptr;
+    SP<LabelImageXML> xml = nullptr;
 
     if (v->getLength() < 2)
       return -1;
@@ -177,44 +189,23 @@ public:
     auto &&list = file->getFilesInDirectory<SURRFIX>((*v)[0]);
     auto &&prog = Program(list.size());
     csv = make<GoogleCloudCSV>((list.size() * 3), (*v)[1]);
+
     for (auto &&path : list) {
-      this->mContent->clean();
-      auto &&xml = fopen(path->getAbstractPath(), MODEL);
-      if (xml == nullptr)
-        continue;
+      xml = make<LabelImageXML>(path->getAbstractPath());
+      auto &&width = xml->getSize().getWidth();
+      auto &&height = xml->getSize().getHeight();
+      auto &&filename = xml->getFilename().data();
 
-      do {
-        retLen = fread(this->mBuffer, 1, sizeof(this->mBuffer), xml);
-        if (retLen > 0)
-          this->mContent->append(this->mBuffer, retLen);
-      } while (retLen == sizeof(this->mBuffer));
+      for (auto &&object : xml->getObjects()) {
+        auto &&name = object.getName().data();
+        auto &&minX = object.getBndbox().getMinX();
+        auto &&minY = object.getBndbox().getMinY();
+        auto &&maxX = object.getBndbox().getMaxX();
+        auto &&maxY = object.getBndbox().getMaxY();
 
-      fclose(xml);
-
-      this->mDocument.clear();
-      this->mDocument.setContent(QString(**this->mContent));
-
-      auto &&pointRoot = this->mDocument.documentElement();
-      auto &&size = pointRoot.firstChildElement(TARGET_SIZE);
-      auto &&objects = pointRoot.elementsByTagName(TARGET_OBJECT);
-
-      auto &&filename = pointRoot.firstChildElement(TARGET_FILE_NAME).text().toStdString();
-      auto &&width = std::stoi(size.firstChildElement(TARGET_WIDTH).text().toStdString());
-      auto &&height = std::stoi(size.firstChildElement(TARGET_HEIGHT).text().toStdString());
-
-      for (i = 0; i < objects.size(); ++i) {
-        auto &&object = objects.at(i);
-        auto &&bndbox = object.firstChildElement(TARGET_BNDBOX);
-
-        auto &&name = object.firstChildElement(TARGET_NAME).text().toStdString();
-        auto &&minX = std::stoi(bndbox.firstChildElement(TARGET_X_MIN).text().toStdString());
-        auto &&minY = std::stoi(bndbox.firstChildElement(TARGET_Y_MIN).text().toStdString());
-        auto &&maxX = std::stoi(bndbox.firstChildElement(TARGET_X_MAX).text().toStdString());
-        auto &&maxY = std::stoi(bndbox.firstChildElement(TARGET_Y_MAX).text().toStdString());
-
-        target = target == nullptr ? name.data() : target;
-        auto &&format = GoogleCloudCSVFormat(width, height, minX, minY, maxX, maxY, filename.data(),
-                                             target, SYMBOL);
+        target = target == nullptr ? name : target;
+        auto &&format = GoogleCloudCSVFormat(width, height, minX, minY, maxX, maxY, filename,
+                                             target, SYMBOL_MARK, SYMBOL_PATH);
         csv->add(format);
       }
 
@@ -222,6 +213,97 @@ public:
     }
 
     return 0;
+  }
+};
+
+class TensorflowTransform : public AbstractCommand {
+private:
+  constexpr static Jchar SURRFIX[] = ".xml";
+  constexpr static Jchar FORMAT_NEW_XML_PATH[] = "%s/%s";
+
+  static void conver(SP<LabelImageXML> const &v) {
+    LabelImageConver<CROP_TOP_10> top10(v);
+    LabelImageConver<CROP_TOP_20> top20(v);
+    LabelImageConver<CROP_TOP_30> top30(v);
+    LabelImageConver<CROP_TOP_40> top40(v);
+
+    LabelImageConver<CROP_BOTTOM_10> bottom10(v);
+    LabelImageConver<CROP_BOTTOM_20> bottom20(v);
+    LabelImageConver<CROP_BOTTOM_30> bottom30(v);
+    LabelImageConver<CROP_BOTTOM_40> bottom40(v);
+
+    LabelImageConver<CROP_LEFT_10> left10(v);
+    LabelImageConver<CROP_LEFT_20> left20(v);
+    LabelImageConver<CROP_LEFT_30> left30(v);
+    LabelImageConver<CROP_LEFT_40> left40(v);
+
+    LabelImageConver<CROP_RIGHT_10> right10(v);
+    LabelImageConver<CROP_RIGHT_20> right20(v);
+    LabelImageConver<CROP_RIGHT_30> right30(v);
+    LabelImageConver<CROP_RIGHT_40> right40(v);
+
+    LabelImageConver<CROP_LEFT_10 | CROP_TOP_10> lt11(v);
+    LabelImageConver<CROP_LEFT_10 | CROP_TOP_20> lt12(v);
+    LabelImageConver<CROP_LEFT_20 | CROP_TOP_10> lt21(v);
+    LabelImageConver<CROP_LEFT_20 | CROP_TOP_20> lt22(v);
+
+    LabelImageConver<CROP_RIGHT_10 | CROP_TOP_10> rt11(v);
+    LabelImageConver<CROP_RIGHT_10 | CROP_TOP_20> rt12(v);
+    LabelImageConver<CROP_RIGHT_20 | CROP_TOP_10> rt21(v);
+    LabelImageConver<CROP_RIGHT_20 | CROP_TOP_20> rt22(v);
+
+    LabelImageConver<CROP_LEFT_10 | CROP_BOTTOM_10> lb11(v);
+    LabelImageConver<CROP_LEFT_10 | CROP_BOTTOM_20> lb12(v);
+    LabelImageConver<CROP_LEFT_20 | CROP_BOTTOM_10> lb21(v);
+    LabelImageConver<CROP_LEFT_20 | CROP_BOTTOM_20> lb22(v);
+
+    LabelImageConver<CROP_RIGHT_10 | CROP_BOTTOM_10> rb11(v);
+    LabelImageConver<CROP_RIGHT_10 | CROP_BOTTOM_20> rb12(v);
+    LabelImageConver<CROP_RIGHT_20 | CROP_BOTTOM_10> rb21(v);
+    LabelImageConver<CROP_RIGHT_20 | CROP_BOTTOM_20> rb22(v);
+
+    LabelImageConver<CROP_RIGHT_10 | CROP_LEFT_10> rl10(v);
+    LabelImageConver<CROP_RIGHT_20 | CROP_LEFT_20> rl20(v);
+
+    LabelImageConver<CROP_TOP_10 | CROP_BOTTOM_10> tb10(v);
+    LabelImageConver<CROP_TOP_20 | CROP_BOTTOM_20> tb20(v);
+
+    LabelImageConver<CROP_TOP_10 | CROP_BOTTOM_10 | CROP_RIGHT_10 | CROP_LEFT_10> tblr10(v);
+    LabelImageConver<CROP_TOP_20 | CROP_BOTTOM_20 | CROP_RIGHT_20 | CROP_LEFT_20> tblr20(v);
+  }
+
+public:
+  using AbstractCommand::AbstractCommand;
+
+  Jint execute(UP<ICommandArgs> const &v) override {
+    SP<LabelImageXML> xml = nullptr;
+
+    if (v->getLength() < 2)
+      return -1;
+
+    auto &&in = (*v)[0];
+    auto &&out = (*v)[1];
+
+    if (File::isFile(in) && File::isFile(out)) {
+      xml = make<LabelImageXML>(in);
+      conver(xml);
+      LabelImageXMLExporter ex(xml, out);
+      return 0;
+    } else if ((!File::isFile(in)) && (!File::isFile(out))) {
+      UP<File> file(new File());
+
+      auto &&list = file->getFilesInDirectory<SURRFIX>(in);
+      for (auto &&f : list) {
+        auto &&newPath = String<>::format(FORMAT_NEW_XML_PATH, out, f->getName());
+
+        xml = make<LabelImageXML>(f->getAbstractPath());
+        conver(xml);
+        LabelImageXMLExporter ex(xml, newPath.data());
+      }
+      return 0;
+    } else {
+      return -1;
+    }
   }
 };
 

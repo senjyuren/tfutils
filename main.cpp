@@ -11,9 +11,10 @@ private:
                                      "  remove /sdcard *.jpeg                             \n"
                                      "  cap [.]                                           \n"
                                      "tensorflow commands                                 \n"
-                                     "  convert /in_directory /out_directory [224] [224]  \n"
+                                     "  convert InDirectory OutDirectory [224] [224]      \n"
                                      "  replace a.csv gs://                               \n"
-                                     "  csv /in_directory a.csv [target]                  \n";
+                                     "  csv InDirectory a.csv [target]                    \n"
+                                     "  transform [InDirectory|a.xml] [OutDirectory|b.xml]\n";
 
 public:
   using tfutils::AbstractCommand::AbstractCommand;
@@ -38,6 +39,7 @@ constexpr Jchar COMMAND_ADB_SCREENSHOT[] = "ss";
 constexpr Jchar COMMAND_TENSORFLOW_CSV[] = "csv";
 constexpr Jchar COMMAND_TENSORFLOW_REPLACE[] = "replace";
 constexpr Jchar COMMAND_TENSORFLOW_CONVERT[] = "convert";
+constexpr Jchar COMMAND_TENSORFLOW_TRANSFORM[] = "transform";
 
 Jint main(Jint argc, Jchar *args[]) {
   tfutils::CommandExecutor executor(argc, args);
@@ -55,5 +57,6 @@ Jint main(Jint argc, Jchar *args[]) {
   executor.add(new tfutils::TensorflowCSV(COMMAND_TENSORFLOW_CSV));
   executor.add(new tfutils::TensorflowConvert(COMMAND_TENSORFLOW_CONVERT));
   executor.add(new tfutils::TensorflowReplace(COMMAND_TENSORFLOW_REPLACE));
+  executor.add(new tfutils::TensorflowTransform(COMMAND_TENSORFLOW_TRANSFORM));
   return executor.execute();
 }

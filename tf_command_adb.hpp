@@ -28,14 +28,14 @@ public:
     auto &&arg = (*v)[0];
     Log::info("ready to operate %s, format: %s, output: %s", arg, format, output);
 
-    auto &&get = String<>::format(COMMAND_GET_LIST, arg, format);
-    auto &&num = System(get.data());
+    auto &&get = String::format(COMMAND_GET_LIST, arg, format);
+    auto &&num = System(get);
     auto &&all = num.getRows();
 
     auto &&prg = Program(all.size());
     for (auto row : all) {
-      auto &&mat = String<>::format(COMMAND_PULL_LOCAL, row.getRow(), output);
-      auto &&sys = System(mat.data());
+      auto &&mat = String::format(COMMAND_PULL_LOCAL, row.getRow().data(), output);
+      System sys(mat);
       prg.updateOne();
     }
     return 0;
@@ -58,14 +58,14 @@ public:
     auto &&format = (*v)[1];
     Log::info("ready to operate %s, format: %s", path, format);
 
-    auto &&get = String<>::format(COMMAND_GET_LIST, path, format);
-    auto &&num = System(get.data());
+    auto &&get = String::format(COMMAND_GET_LIST, path, format);
+    auto &&num = System(get);
     auto &&all = num.getRows();
 
     auto &&prg = Program(all.size());
     for (auto row : all) {
-      auto &&mat = String<>::format(COMMAND_REMOVE_LOCAL, row.getRow());
-      auto &&sys = System(mat.data());
+      auto &&mat = String::format(COMMAND_REMOVE_LOCAL, row.getRow().data());
+      System sys(mat);
       prg.updateOne();
     }
     return 0;
@@ -100,8 +100,8 @@ public:
     if (v->getLength() == 1)
       this->mArgs->push((*v)[0]);
 
-    auto &&cmd = String<>::format(COMMAND_SCREENCAP, COMMAND_PATH, COMMAND_FILE);
-    auto &&sys = System(cmd.data());
+    auto &&cmd = String::format(COMMAND_SCREENCAP, COMMAND_PATH, COMMAND_FILE);
+    System sys(cmd);
 
     executor = make<ADBPull>();
     executor->execute(this->mArgs);

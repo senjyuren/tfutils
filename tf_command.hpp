@@ -74,8 +74,13 @@ public:
     Jint i = 0;
     Jint ret = -1;
 
-    if (this->mArgc < 2)
+    if (this->mArgc < 2) {
+      for (auto &&command : this->mCommands) {
+        if (command->isHelp())
+          command->execute(this->mCommandArgs);
+      }
       return -1;
+    }
 
     auto &&name = this->mArgs[1];
     this->mCommandArgs->clean();

@@ -21,84 +21,31 @@ template <class T> struct IBuffer {
   virtual void clean() = 0;
 };
 
-struct IString : public IBuffer<Jchar> {
-  ~IString() override = default;
-
-  virtual void append(Jchar const *v) = 0;
-
-  virtual void append(Jchar const *v, Jint vLen) = 0;
-};
-
-template <Jint Size = 1024> class String : public IString {
+class String {
 private:
-  Jint mSize;
-  Jint mLength;
-  Jchar mBuffer[Size];
+  constexpr static Jint SIZE_BUFFER = 1024;
+
+  Jchar mBuffer[SIZE_BUFFER];
+
+  String() : mBuffer() {}
 
   static String &getInstance() {
     static String *obj = nullptr;
     if (obj == nullptr)
-      obj = new String<>();
+      obj = new String();
     return (*obj);
   }
 
-  template <class... Args> Jchar const *input(Jchar const *format, Args... args) {
-    auto &&len = snprintf(this->mBuffer, sizeof(this->mBuffer), format, args...);
+  template <class... Args> Jchar const *input(std::string const &format, Args... args) {
+    auto &&len = snprintf(this->mBuffer, sizeof(this->mBuffer), format.data(), args...);
     this->mBuffer[len] = 0x00;
     return this->mBuffer;
   }
 
 public:
-  String() : mSize(Size), mLength(), mBuffer() {}
-
-  explicit String(Jchar const *v) : mSize(Size), mLength(), mBuffer() {
-    if (v == nullptr)
-      return;
-
-    auto &&vLen = strlen(v);
-    auto &&bufferLen = (vLen + 1) > Size ? (Size - 1) : vLen;
-    memcpy(this->mBuffer, v, bufferLen);
-    this->mLength += bufferLen;
-  }
-
-  template <class... Args> static std::string format(Jchar const *format, Args... args) {
+  template <class... Args> static std::string format(std::string const &format, Args... args) {
     return String::getInstance().input(format, args...);
   }
-
-  Jchar operator[](Jint v) override { return this->mBuffer[v]; }
-
-  Jchar const *operator*() override { return this->mBuffer; }
-
-  void push(Jchar v) override {
-    if (this->mLength > (Size - 1))
-      return;
-
-    this->mBuffer[this->mLength] = v;
-    ++this->mLength;
-    this->mBuffer[this->mLength] = 0x00;
-  }
-
-  void append(Jchar const *v) override { this->append(v, strlen(v)); }
-
-  void append(Jchar const *v, Jint vLen) override {
-    if ((v == nullptr) || (vLen <= 0))
-      return;
-    if (this->mLength > (Size - 1))
-      return;
-
-    auto &&bufferLen = (this->mLength + vLen + 1) > Size ? (Size - this->mLength - 1) : vLen;
-    memcpy(&this->mBuffer[this->mLength], v, bufferLen);
-    this->mLength += bufferLen;
-    this->mBuffer[this->mLength] = 0x00;
-  }
-
-  Jint getSize() override { return this->mSize; }
-
-  Jint getLength() override { return this->mLength; }
-
-  Jbool isEmpty() override { return (this->mLength == 0); }
-
-  void clean() override { this->mLength = 0; }
 };
 
 class Log {
@@ -121,16 +68,16 @@ private:
     return (*obj);
   }
 
-  template <class... Args> Jchar const *format(Jchar const *format, Args... args) {
-    auto &&len = snprintf(this->mBuffer, sizeof(this->mBuffer), format, args...);
+  template <class... Args> Jchar const *format(std::string const &format, Args... args) {
+    auto &&len = snprintf(this->mBuffer, sizeof(this->mBuffer), format.data(), args...);
     this->mBuffer[len] = 0x00;
     return this->mBuffer;
   }
 
 public:
   template <Jchar const *Tag = TAG, class... Args>
-  static void info(Jchar const *format, Args... args) {
-    if (format == nullptr)
+  static void info(std::string const &format, Args... args) {
+    if (format.empty())
       return;
 
     auto &&ret = Log::getInstance().format(format, args...);
@@ -138,8 +85,8 @@ public:
   }
 
   template <Jchar const *Tag = TAG, class... Args>
-  static void debug(Jchar const *format, Args... args) {
-    if (format == nullptr)
+  static void debug(std::string const &format, Args... args) {
+    if (format.empty())
       return;
 
     auto &&ret = Log::getInstance().format(format, args...);
@@ -147,8 +94,8 @@ public:
   }
 
   template <Jchar const *Tag = TAG, class... Args>
-  static void error(Jchar const *format, Args... args) {
-    if (format == nullptr)
+  static void error(std::string const &format, Args... args) {
+    if (format.empty())
       return;
 
     auto &&ret = Log::getInstance().format(format, args...);
@@ -201,7 +148,7 @@ private:
 public:
   explicit SystemRow(Jchar const *v) : mRow(v) {}
 
-  Jchar const *getRow() { return this->mRow.data(); }
+  std::string const &getRow() { return this->mRow; }
 };
 
 class System {
@@ -217,15 +164,15 @@ private:
   std::list<SystemRow> mRows;
 
 public:
-  explicit System(Jchar const *v) : mCache(), mCacheNew(), mRows() {
+  explicit System(std::string const &v) : mCache(), mCacheNew(), mRows() {
     Jint i = 0;
     Jint j = 0;
     Jint retLen = 0;
 
-    if (v == nullptr)
+    if (v.empty())
       return;
 
-    auto &&ctx = popen(v, MODEL_READ);
+    auto &&ctx = popen(v.data(), MODEL_READ);
 
     do {
       retLen = fread(this->mCache, 1, sizeof(this->mCache), ctx);
@@ -252,27 +199,24 @@ public:
 
 class FileAttributes {
 private:
-  constexpr static Jint SIZE_CACHE = 256;
-
   constexpr static Jchar FORMAT_PATH[] = "%s/%s";
 
-  UP<IString> mFileName;
-  UP<IString> mFileBasePath;
-  SP<IString> mFileAbstractPath;
+  std::string mFileName;
+  std::string mFileBasePath;
+  std::string mFileAbstractPath;
 
 public:
-  FileAttributes(Jchar const *path, Jchar const *name)
-      : mFileName(new String<SIZE_CACHE>(name)), mFileBasePath(new String<SIZE_CACHE>(path)),
-        mFileAbstractPath() {
-    auto &&format = String<>::format(FORMAT_PATH, (**this->mFileBasePath), (**this->mFileName));
-    this->mFileAbstractPath = make<String<SIZE_CACHE>>(format.data());
+  FileAttributes(std::string path, std::string name)
+      : mFileName(move(name)), mFileBasePath(move(path)), mFileAbstractPath() {
+    this->mFileAbstractPath =
+        String::format(FORMAT_PATH, this->mFileBasePath.data(), this->mFileName.data());
   }
 
-  Jchar const *getName() { return (**this->mFileName); }
+  std::string const &getName() { return this->mFileName; }
 
-  Jchar const *getBasePath() { return (**this->mFileBasePath); }
+  std::string const &getBasePath() { return this->mFileBasePath; }
 
-  Jchar const *getAbstractPath() { return (**this->mFileAbstractPath); }
+  std::string const &getAbstractPath() { return this->mFileAbstractPath; }
 };
 
 class File {
@@ -289,22 +233,22 @@ public:
     return size;
   }
 
-  static Jint remove(Jchar const *v) { return ::remove(v); }
+  static Jint remove(std::string const &v) { return ::remove(v.data()); }
 
-  static Jbool isFile(Jchar const *v) { return (!std::filesystem::is_directory(v)); }
+  static Jbool isFile(std::string const &v) { return (!std::filesystem::is_directory(v)); }
 
-  static Jbool isExist(Jchar const *v) { return std::filesystem::exists(v); }
+  static Jbool isExist(std::string const &v) { return std::filesystem::exists(v); }
 
   template <Jchar const *Suffix = nullptr>
-  std::list<UP<FileAttributes>> const &getFilesInDirectory(Jchar const *v) {
+  std::list<UP<FileAttributes>> const &getFilesInDirectory(std::string const &v) {
     std::filesystem::directory_iterator iterator(v);
 
     for (auto &&entry : iterator) {
       auto &&path = entry.path().parent_path().string();
       auto &&name = entry.path().filename().string();
       auto &&exte = entry.path().extension().string();
-      if ((Suffix == nullptr) || (strcmp(exte.data(), Suffix) == 0))
-        this->mFileAttributes.emplace_back(new FileAttributes(path.data(), name.data()));
+      if ((Suffix == nullptr) || (exte == Suffix))
+        this->mFileAttributes.emplace_back(new FileAttributes(path, name));
     }
 
     return this->mFileAttributes;

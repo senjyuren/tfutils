@@ -38,13 +38,13 @@ public:
     auto &&dir = file->getFilesInDirectory(indir);
     Program prog(dir.size());
     for (auto &&p : dir) {
-      auto &&name = p->getName();
-      auto &&path = p->getAbstractPath();
+      auto &&name = p->getName().data();
+      auto &&path = p->getAbstractPath().data();
 
-      auto &&output = String<>::format(FORMAT_LINUX_OUTPUT, (*v)[1], name);
-      auto &&command = String<>::format(FORMAT_LINUX_CONVERT, width, height, path, output.data());
+      auto &&output = String::format(FORMAT_LINUX_OUTPUT, (*v)[1], name);
+      auto &&command = String::format(FORMAT_LINUX_CONVERT, width, height, path, output.data());
 
-      auto &&sys = System(command.data());
+      System sys(command);
       prog.updateOne();
     }
     return 0;
@@ -73,9 +73,6 @@ private:
   UP<ICommandArgs> mArgs;
 
 public:
-  TensorflowReplace()
-      : AbstractCommand(), mBuffer(), mOldFile(), mNewFile(), mArgs(new CommandArgs<SIZE_ARGS>()) {}
-
   explicit TensorflowReplace(Jchar const *v)
       : AbstractCommand(v), mBuffer(), mOldFile(), mNewFile(), mArgs(new CommandArgs<SIZE_ARGS>()) {
   }
@@ -221,7 +218,10 @@ private:
   constexpr static Jchar SURRFIX[] = ".xml";
   constexpr static Jchar FORMAT_NEW_XML_PATH[] = "%s/%s";
 
-  static void conver(SP<LabelImageXML> const &v) {
+  constexpr static Jchar MODEL_CROP[] = "crop";
+  constexpr static Jchar MODEL_OFFSET[] = "offset";
+
+  static void converCrop(SP<LabelImageXML> const &v) {
     LabelImageConver<CROP_TOP_10> top10(v);
     LabelImageConver<CROP_TOP_20> top20(v);
     LabelImageConver<CROP_TOP_30> top30(v);
@@ -272,33 +272,71 @@ private:
     LabelImageConver<CROP_TOP_20 | CROP_BOTTOM_20 | CROP_RIGHT_20 | CROP_LEFT_20> tblr20(v);
   }
 
+  static void convertOffset(SP<LabelImageXML> const &v) {
+    LabelImageConver<OFFSET_TOP_10> top10(v);
+    LabelImageConver<OFFSET_TOP_20> top20(v);
+
+    LabelImageConver<OFFSET_BOTTOM_10> bottom10(v);
+    LabelImageConver<OFFSET_BOTTOM_20> bottom20(v);
+
+    LabelImageConver<OFFSET_LEFT_10> left10(v);
+    LabelImageConver<OFFSET_LEFT_20> left20(v);
+
+    LabelImageConver<OFFSET_RIGHT_10> right10(v);
+    LabelImageConver<OFFSET_RIGHT_20> right20(v);
+
+    LabelImageConver<OFFSET_TOP_10 | OFFSET_LEFT_10> tl10(v);
+    LabelImageConver<OFFSET_TOP_20 | OFFSET_LEFT_20> tl20(v);
+
+    LabelImageConver<OFFSET_TOP_20 | OFFSET_RIGHT_10> tr10(v);
+    LabelImageConver<OFFSET_TOP_20 | OFFSET_RIGHT_20> tr20(v);
+
+    LabelImageConver<OFFSET_BOTTOM_10 | OFFSET_LEFT_10> bl10(v);
+    LabelImageConver<OFFSET_BOTTOM_20 | OFFSET_LEFT_20> bl20(v);
+
+    LabelImageConver<OFFSET_BOTTOM_10 | OFFSET_RIGHT_10> br10(v);
+    LabelImageConver<OFFSET_BOTTOM_20 | OFFSET_RIGHT_20> br20(v);
+  }
+
 public:
   using AbstractCommand::AbstractCommand;
 
   Jint execute(UP<ICommandArgs> const &v) override {
     SP<LabelImageXML> xml = nullptr;
 
-    if (v->getLength() < 2)
+    if (v->getLength() < 3)
       return -1;
 
     auto &&in = (*v)[0];
     auto &&out = (*v)[1];
+    auto &&model = (*v)[2];
 
     if (File::isFile(in) && File::isFile(out)) {
       xml = make<LabelImageXML>(in);
-      conver(xml);
+
+      if (strcmp(model, MODEL_CROP) == 0)
+        converCrop(xml);
+      else if (strcmp(model, MODEL_OFFSET) == 0)
+        convertOffset(xml);
+
       LabelImageXMLExporter ex(xml, out);
       return 0;
     } else if ((!File::isFile(in)) && (!File::isFile(out))) {
       UP<File> file(new File());
 
       auto &&list = file->getFilesInDirectory<SURRFIX>(in);
+      Program prog(list.size());
       for (auto &&f : list) {
-        auto &&newPath = String<>::format(FORMAT_NEW_XML_PATH, out, f->getName());
-
+        auto &&newPath = String::format(FORMAT_NEW_XML_PATH, out, f->getName().data());
         xml = make<LabelImageXML>(f->getAbstractPath());
-        conver(xml);
-        LabelImageXMLExporter ex(xml, newPath.data());
+
+        if (strcmp(model, MODEL_CROP) == 0)
+          converCrop(xml);
+        else if (strcmp(model, MODEL_OFFSET) == 0)
+          convertOffset(xml);
+
+        LabelImageXMLExporter ex(xml, newPath);
+        prog.updateOne();
       }
       return 0;
     } else {

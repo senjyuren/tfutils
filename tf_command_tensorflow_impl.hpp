@@ -28,7 +28,7 @@ public:
       : mWidth(width), mHeight(height), mXmin(x1), mYmin(y1), mXmax(x2), mYmax(y2), mName(name),
         mLabel(label), mSymbolMark(symbolMark), mSymbolPath(symbolPath), mFormatBuffer() {}
 
-  Jchar const *getRow() {
+  std::string getRow() {
     Jfloat x1 = 0;
     Jfloat y1 = 0;
     Jfloat x2 = 0;
@@ -72,11 +72,8 @@ public:
   }
 
   void add(GoogleCloudCSVFormat &v) {
-    auto &&row = v.getRow();
-
-    auto rowLen = strlen(row);
     if (this->mCSVFile != nullptr)
-      fwrite(row, rowLen, 1, this->mCSVFile);
+      fwrite(v.getRow().data(), v.getRow().size(), 1, this->mCSVFile);
   }
 };
 
@@ -218,7 +215,7 @@ private:
   std::list<LabelImageXMLObject> mObjects;
 
 public:
-  explicit LabelImageXML(Jchar const *v)
+  explicit LabelImageXML(std::string const &v)
       : mXml(), mBuffer(), mXmlContent(), mFolder(), mFilename(), mPath(), mSource(), mSize(),
         mSegmented(), mObjects() {
     Jint i = 0;
@@ -226,10 +223,10 @@ public:
 
     QDomDocument document;
 
-    if (v == nullptr)
+    if (v.empty())
       return;
 
-    this->mXml = fopen(v, MODEL_READ);
+    this->mXml = fopen(v.data(), MODEL_READ);
     if (this->mXml == nullptr)
       return;
 
@@ -304,75 +301,106 @@ enum LabelImageCoverCrop : Juint {
   CROP_TOP_20 = CROP_BASE << 1u,
   CROP_TOP_30 = CROP_BASE << 2u,
   CROP_TOP_40 = CROP_BASE << 3u,
+
   CROP_BOTTOM_10 = CROP_BASE << 4u,
   CROP_BOTTOM_20 = CROP_BASE << 5u,
   CROP_BOTTOM_30 = CROP_BASE << 6u,
   CROP_BOTTOM_40 = CROP_BASE << 7u,
+
   CROP_LEFT_10 = CROP_BASE << 8u,
   CROP_LEFT_20 = CROP_BASE << 9u,
   CROP_LEFT_30 = CROP_BASE << 10u,
   CROP_LEFT_40 = CROP_BASE << 11u,
+
   CROP_RIGHT_10 = CROP_BASE << 12u,
   CROP_RIGHT_20 = CROP_BASE << 13u,
   CROP_RIGHT_30 = CROP_BASE << 14u,
   CROP_RIGHT_40 = CROP_BASE << 15u,
+
+  OFFSET_TOP_10 = CROP_BASE << 16u,
+  OFFSET_TOP_20 = CROP_BASE << 17u,
+
+  OFFSET_BOTTOM_10 = CROP_BASE << 18u,
+  OFFSET_BOTTOM_20 = CROP_BASE << 19u,
+
+  OFFSET_LEFT_10 = CROP_BASE << 20u,
+  OFFSET_LEFT_20 = CROP_BASE << 21u,
+
+  OFFSET_RIGHT_10 = CROP_BASE << 22u,
+  OFFSET_RIGHT_20 = CROP_BASE << 23u,
 };
 
 template <Juint Crop> class LabelImageConver {
 private:
-  template <Juint CropFun> static Jint cropTop(Jint minY, Jint maxY) {
+  template <Juint CropFun> static Jint top(Jint minY, Jint maxY) {
     auto &&ret = minY;
     auto &&stepY = (maxY - minY) / 10;
-    if ((CropFun & CROP_TOP_10) == CROP_TOP_10)
+    if (CropFun & (CROP_TOP_10 | OFFSET_TOP_10))
       ret += stepY;
-    else if ((CropFun & CROP_TOP_20) == CROP_TOP_20)
+    else if (CropFun & (CROP_TOP_20 | OFFSET_TOP_20))
       ret += stepY * 2;
-    else if ((CropFun & CROP_TOP_30) == CROP_TOP_30)
+    else if (CropFun & CROP_TOP_30)
       ret += stepY * 3;
-    else if ((CropFun & CROP_TOP_40) == CROP_TOP_40)
+    else if (CropFun & CROP_TOP_40)
       ret += stepY * 4;
+    else if (CropFun & OFFSET_BOTTOM_10)
+      ret -= stepY;
+    else if (CropFun & OFFSET_BOTTOM_20)
+      ret -= stepY * 2;
     return ret;
   }
 
-  template <Juint CropFun> static Jint cropBottom(Jint minY, Jint maxY) {
+  template <Juint CropFun> static Jint bottom(Jint minY, Jint maxY) {
     auto &&ret = maxY;
     auto &&stepY = (maxY - minY) / 10;
-    if ((CropFun & CROP_BOTTOM_10) == CROP_BOTTOM_10)
+    if (CropFun & (CROP_BOTTOM_10 | OFFSET_BOTTOM_10))
       ret -= stepY;
-    else if ((CropFun & CROP_BOTTOM_20) == CROP_BOTTOM_20)
+    else if (CropFun & (CROP_BOTTOM_20 | OFFSET_BOTTOM_20))
       ret -= stepY * 2;
-    else if ((CropFun & CROP_BOTTOM_30) == CROP_BOTTOM_30)
+    else if (CropFun & CROP_BOTTOM_30)
       ret -= stepY * 3;
-    else if ((CropFun & CROP_BOTTOM_40) == CROP_BOTTOM_40)
+    else if (CropFun & CROP_BOTTOM_40)
       ret -= stepY * 4;
+    else if (CropFun & OFFSET_TOP_10)
+      ret += stepY;
+    else if (CropFun & OFFSET_TOP_20)
+      ret += stepY * 2;
     return ret;
   }
 
-  template <Juint CropFun> static Jint cropLeft(Jint minX, Jint maxX) {
+  template <Juint CropFun> static Jint left(Jint minX, Jint maxX) {
     auto &&ret = minX;
     auto &&stepX = (maxX - minX) / 10;
-    if ((CropFun & CROP_LEFT_10) == CROP_LEFT_10)
+    if (CropFun & (CROP_LEFT_10 | OFFSET_LEFT_10))
       ret += stepX;
-    else if ((CropFun & CROP_LEFT_20) == CROP_LEFT_20)
+    else if (CropFun & (CROP_LEFT_20 | OFFSET_LEFT_20))
       ret += stepX * 2;
-    else if ((CropFun & CROP_LEFT_30) == CROP_LEFT_30)
+    else if (CropFun & CROP_LEFT_30)
       ret += stepX * 3;
-    else if ((CropFun & CROP_LEFT_40) == CROP_LEFT_40)
+    else if (CropFun & CROP_LEFT_40)
       ret += stepX * 4;
+    else if (CropFun & OFFSET_RIGHT_10)
+      ret -= stepX;
+    else if (CropFun & OFFSET_RIGHT_20)
+      ret -= stepX * 2;
     return ret;
   }
 
-  template <Juint CropFun> static Jint cropRight(Jint minX, Jint maxX) {
+  template <Juint CropFun> static Jint right(Jint minX, Jint maxX) {
     auto &&ret = maxX;
     auto &&stepX = (maxX - minX) / 10;
-    if ((CropFun & CROP_RIGHT_10) == CROP_RIGHT_10)
+    if (CropFun & (CROP_RIGHT_10 | OFFSET_RIGHT_10))
       ret -= stepX;
-    else if ((CropFun & CROP_RIGHT_20) == CROP_RIGHT_20)
+    else if (CropFun & (CROP_RIGHT_20 | OFFSET_RIGHT_20))
       ret -= stepX * 2;
-    else if ((CropFun & CROP_RIGHT_30) == CROP_RIGHT_30)
+    else if (CropFun & CROP_RIGHT_30)
       ret -= stepX * 3;
-    else if ((CropFun & CROP_RIGHT_40) == CROP_RIGHT_40)
+    else if (CropFun & CROP_RIGHT_40)
       ret -= stepX * 4;
+    else if (CropFun & OFFSET_LEFT_10)
+      ret += stepX;
+    else if (CropFun & OFFSET_LEFT_20)
+      ret += stepX * 2;
     return ret;
   }
 
@@ -386,19 +414,33 @@ public:
     auto bndbox = v->getObjects().front().getBndbox();
     auto object = v->getObjects().front();
 
+    auto &&width = v->getSize().getWidth();
+    auto &&height = v->getSize().getHeight();
     auto &&minXt = v->getObjects().front().getBndbox().getMinX();
     auto &&minYt = v->getObjects().front().getBndbox().getMinY();
     auto &&maxXt = v->getObjects().front().getBndbox().getMaxX();
     auto &&maxYt = v->getObjects().front().getBndbox().getMaxY();
 
-    if (Crop & (CROP_TOP_10 | CROP_TOP_20 | CROP_TOP_30 | CROP_TOP_40))
-      minY = cropTop<Crop>(minYt, maxYt);
-    if (Crop & (CROP_BOTTOM_10 | CROP_BOTTOM_20 | CROP_BOTTOM_30 | CROP_BOTTOM_40))
-      maxY = cropBottom<Crop>(minYt, maxYt);
-    if (Crop & (CROP_LEFT_10 | CROP_LEFT_20 | CROP_LEFT_30 | CROP_LEFT_40))
-      minX = cropLeft<Crop>(minXt, maxXt);
-    if (Crop & (CROP_RIGHT_10 | CROP_RIGHT_20 | CROP_RIGHT_30 | CROP_RIGHT_40))
-      maxX = cropRight<Crop>(minXt, maxXt);
+    auto &&bunchTop = CROP_TOP_10 | CROP_TOP_20 | CROP_TOP_30 | CROP_TOP_40 | OFFSET_TOP_10 |
+                      OFFSET_TOP_20 | OFFSET_BOTTOM_10 | OFFSET_BOTTOM_20;
+    auto &&bunchBottom = CROP_BOTTOM_10 | CROP_BOTTOM_20 | CROP_BOTTOM_30 | CROP_BOTTOM_40 |
+                         OFFSET_TOP_10 | OFFSET_TOP_20 | OFFSET_BOTTOM_10 | OFFSET_BOTTOM_20;
+    auto &&bunchLeft = CROP_LEFT_10 | CROP_LEFT_20 | CROP_LEFT_30 | CROP_LEFT_40 | OFFSET_LEFT_10 |
+                       OFFSET_LEFT_20 | OFFSET_RIGHT_10 | OFFSET_RIGHT_20;
+    auto &&bunchRight = CROP_RIGHT_10 | CROP_RIGHT_20 | CROP_RIGHT_30 | CROP_RIGHT_40 |
+                        OFFSET_LEFT_10 | OFFSET_LEFT_20 | OFFSET_RIGHT_10 | OFFSET_RIGHT_20;
+
+    if (Crop & bunchTop)
+      minY = top<Crop>(minYt, maxYt);
+    if (Crop & bunchBottom)
+      maxY = bottom<Crop>(minYt, maxYt);
+    if (Crop & bunchLeft)
+      minX = left<Crop>(minXt, maxXt);
+    if (Crop & bunchRight)
+      maxX = right<Crop>(minXt, maxXt);
+
+    if ((minY < 0) || (maxY > height) || (minX < 0) || (maxX > width))
+      return;
 
     if (minX != 0)
       bndbox.setMinX(minX);
@@ -523,14 +565,14 @@ private:
   }
 
 public:
-  explicit LabelImageXMLExporter(SP<LabelImageXML> const &input, Jchar const *output)
+  explicit LabelImageXMLExporter(SP<LabelImageXML> const &input, std::string const &output)
       : mOutputFile() {
     QDomDocument document;
 
-    if (output == nullptr)
+    if (output.empty())
       return;
 
-    this->mOutputFile = fopen(output, MODEL_WRITE);
+    this->mOutputFile = fopen(output.data(), MODEL_WRITE);
     if (this->mOutputFile == nullptr)
       return;
 

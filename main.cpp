@@ -2,19 +2,20 @@
 
 class Help : public tfutils::AbstractCommand {
 private:
-  constexpr static Jchar CONTENT[] = "os commands                                         \n"
-                                     "  cp a.txt b.txt                                    \n"
-                                     "  mv a.txt b.txt                                    \n"
-                                     "  rm a.txt                                          \n"
-                                     "adb commands                                        \n"
-                                     "  pull /sdcard [*.jpeg] [.]                         \n"
-                                     "  remove /sdcard *.jpeg                             \n"
-                                     "  cap [.]                                           \n"
-                                     "tensorflow commands                                 \n"
-                                     "  convert InDirectory OutDirectory [224] [224]      \n"
-                                     "  replace a.csv gs://                               \n"
-                                     "  csv InDirectory a.csv [target]                    \n"
-                                     "  transform [InDirectory|a.xml] [OutDirectory|b.xml]\n";
+  constexpr static Jchar CONTENT[] =
+      "os commands                                                         \n"
+      "  cp a.txt b.txt                                                    \n"
+      "  mv a.txt b.txt                                                    \n"
+      "  rm a.txt                                                          \n"
+      "adb commands                                                        \n"
+      "  pull /sdcard [*.jpeg] [.]                                         \n"
+      "  remove /sdcard *.jpeg                                             \n"
+      "  cap [.]                                                           \n"
+      "tensorflow commands                                                 \n"
+      "  convert InDirectory OutDirectory [224] [224]                      \n"
+      "  replace a.csv gs://                                               \n"
+      "  csv InDirectory a.csv [target]                                    \n"
+      "  transform [InDirectory|a.xml] [OutDirectory|b.xml] [crop|offset]  \n";
 
 public:
   using tfutils::AbstractCommand::AbstractCommand;
@@ -33,8 +34,8 @@ constexpr Jchar COMMAND_MOVE[] = "mv";
 constexpr Jchar COMMAND_REMOVE[] = "rm";
 
 constexpr Jchar COMMAND_ADB_PULL[] = "pull";
-constexpr Jchar COMMAND_ADB_REMOVE[] = "rm";
-constexpr Jchar COMMAND_ADB_SCREENSHOT[] = "ss";
+constexpr Jchar COMMAND_ADB_REMOVE[] = "remove";
+constexpr Jchar COMMAND_ADB_SCREENSHOT[] = "cap";
 
 constexpr Jchar COMMAND_TENSORFLOW_CSV[] = "csv";
 constexpr Jchar COMMAND_TENSORFLOW_REPLACE[] = "replace";

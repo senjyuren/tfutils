@@ -12,8 +12,6 @@ template <class T> struct IBuffer {
 
   virtual T const *operator*() = 0;
 
-  virtual Jint getSize() = 0;
-
   virtual Jint getLength() = 0;
 
   virtual Jbool isEmpty() = 0;
@@ -36,8 +34,8 @@ private:
     return (*obj);
   }
 
-  template <class... Args> Jchar const *input(std::string const &format, Args... args) {
-    auto &&len = snprintf(this->mBuffer, sizeof(this->mBuffer), format.data(), args...);
+  template <class... Args> std::string input(std::string const &format, Args... args) {
+    auto &&len = snprintf(this->mBuffer, sizeof(this->mBuffer), format.c_str(), args...);
     this->mBuffer[len] = 0x00;
     return this->mBuffer;
   }
@@ -68,9 +66,14 @@ private:
     return (*obj);
   }
 
-  template <class... Args> Jchar const *format(std::string const &format, Args... args) {
-    auto &&len = snprintf(this->mBuffer, sizeof(this->mBuffer), format.data(), args...);
-    this->mBuffer[len] = 0x00;
+  template <class... Args> std::string format(std::string const &format, Args... args) {
+    if (sizeof...(args) < 1) {
+      memcpy(this->mBuffer, format.data(), format.size());
+      this->mBuffer[format.size()] = 0x00;
+    } else {
+      auto &&len = snprintf(this->mBuffer, sizeof(this->mBuffer), format.c_str(), args...);
+      this->mBuffer[len] = 0x00;
+    }
     return this->mBuffer;
   }
 
@@ -81,7 +84,7 @@ public:
       return;
 
     auto &&ret = Log::getInstance().format(format, args...);
-    printf(FORMAT_INFO, Tag, ret);
+    printf(FORMAT_INFO, Tag, ret.data());
   }
 
   template <Jchar const *Tag = TAG, class... Args>
@@ -90,7 +93,7 @@ public:
       return;
 
     auto &&ret = Log::getInstance().format(format, args...);
-    printf(FORMAT_DBUG, Tag, ret);
+    printf(FORMAT_DBUG, Tag, ret.data());
   }
 
   template <Jchar const *Tag = TAG, class... Args>
@@ -99,7 +102,7 @@ public:
       return;
 
     auto &&ret = Log::getInstance().format(format, args...);
-    printf(FORMAT_ERRO, Tag, ret);
+    printf(FORMAT_ERRO, Tag, ret.data());
   }
 };
 
@@ -172,7 +175,7 @@ public:
     if (v.empty())
       return;
 
-    auto &&ctx = popen(v.data(), MODEL_READ);
+    auto &&ctx = popen(v.c_str(), MODEL_READ);
 
     do {
       retLen = fread(this->mCache, 1, sizeof(this->mCache), ctx);
@@ -209,7 +212,7 @@ public:
   FileAttributes(std::string path, std::string name)
       : mFileName(move(name)), mFileBasePath(move(path)), mFileAbstractPath() {
     this->mFileAbstractPath =
-        String::format(FORMAT_PATH, this->mFileBasePath.data(), this->mFileName.data());
+        String::format(FORMAT_PATH, this->mFileBasePath.c_str(), this->mFileName.c_str());
   }
 
   std::string const &getName() { return this->mFileName; }

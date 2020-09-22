@@ -15,18 +15,19 @@ private:
   Jint mXmax;
   Jint mYmax;
 
-  Jchar const *mName;
-  Jchar const *mLabel;
-  Jchar const *mSymbolMark;
-  Jchar const *mSymbolPath;
+  std::string mName;
+  std::string mLabel;
+  std::string mSymbolMark;
+  std::string mSymbolPath;
   Jchar mFormatBuffer[SIZE_ROW];
 
 public:
   GoogleCloudCSVFormat(Jint width, Jint height, Jint x1, Jint y1, Jint x2, Jint y2,
-                       Jchar const *name, Jchar const *label, Jchar const *symbolMark,
-                       Jchar const *symbolPath)
-      : mWidth(width), mHeight(height), mXmin(x1), mYmin(y1), mXmax(x2), mYmax(y2), mName(name),
-        mLabel(label), mSymbolMark(symbolMark), mSymbolPath(symbolPath), mFormatBuffer() {}
+                       std::string name, std::string label, std::string symbolMark,
+                       std::string symbolPath)
+      : mWidth(width), mHeight(height), mXmin(x1), mYmin(y1), mXmax(x2), mYmax(y2),
+        mName(move(name)), mLabel(move(label)), mSymbolMark(move(symbolMark)),
+        mSymbolPath(move(symbolPath)), mFormatBuffer() {}
 
   std::string getRow() {
     Jfloat x1 = 0;
@@ -47,9 +48,9 @@ public:
     x4 = x1;
     y4 = y3;
 
-    auto &&len =
-        snprintf(this->mFormatBuffer, sizeof(this->mFormatBuffer), FORMAT_ROW, this->mSymbolMark,
-                 this->mSymbolPath, this->mName, this->mLabel, x1, y1, x2, y2, x3, y3, x4, y4);
+    auto &&len = snprintf(this->mFormatBuffer, sizeof(this->mFormatBuffer), FORMAT_ROW,
+                          this->mSymbolMark.c_str(), this->mSymbolPath.c_str(), this->mName.c_str(),
+                          this->mLabel.c_str(), x1, y1, x2, y2, x3, y3, x4, y4);
     this->mFormatBuffer[len] = 0x00;
     return this->mFormatBuffer;
   }
@@ -163,6 +164,8 @@ public:
 
   [[nodiscard]] LabelImageXMLBndbox const &getBndbox() const { return this->mBndbox; }
 
+  void setName(std::string const &v) { this->mName = v; }
+
   void setBndbox(LabelImageXMLBndbox const &v) { this->mBndbox = v; }
 };
 
@@ -226,7 +229,7 @@ public:
     if (v.empty())
       return;
 
-    this->mXml = fopen(v.data(), MODEL_READ);
+    this->mXml = fopen(v.c_str(), MODEL_READ);
     if (this->mXml == nullptr)
       return;
 
@@ -290,7 +293,11 @@ public:
 
   [[nodiscard]] Jint getSegmented() const { return this->mSegmented; }
 
-  [[nodiscard]] std::list<LabelImageXMLObject> const &getObjects() const { return this->mObjects; }
+  std::list<LabelImageXMLObject> &getObjects() { return this->mObjects; }
+
+  void setFilename(std::string const &v) { this->mFilename = v; }
+
+  void setPath(std::string const &v) { this->mPath = v; }
 
   void addObject(LabelImageXMLObject const &v) { this->mObjects.push_back(v); }
 };
@@ -330,11 +337,13 @@ enum LabelImageCoverCrop : Juint {
   OFFSET_RIGHT_20 = CROP_BASE << 23u,
 };
 
-template <Juint Crop> class LabelImageConver {
+class LabelImageConver {
 private:
+  SP<LabelImageXML> mXml;
+
   template <Juint CropFun> static Jint top(Jint minY, Jint maxY) {
     auto &&ret = minY;
-    auto &&stepY = (maxY - minY) / 10;
+    auto &&stepY = (maxY - minY) / 20;
     if (CropFun & (CROP_TOP_10 | OFFSET_TOP_10))
       ret += stepY;
     else if (CropFun & (CROP_TOP_20 | OFFSET_TOP_20))
@@ -352,7 +361,7 @@ private:
 
   template <Juint CropFun> static Jint bottom(Jint minY, Jint maxY) {
     auto &&ret = maxY;
-    auto &&stepY = (maxY - minY) / 10;
+    auto &&stepY = (maxY - minY) / 20;
     if (CropFun & (CROP_BOTTOM_10 | OFFSET_BOTTOM_10))
       ret -= stepY;
     else if (CropFun & (CROP_BOTTOM_20 | OFFSET_BOTTOM_20))
@@ -370,7 +379,7 @@ private:
 
   template <Juint CropFun> static Jint left(Jint minX, Jint maxX) {
     auto &&ret = minX;
-    auto &&stepX = (maxX - minX) / 10;
+    auto &&stepX = (maxX - minX) / 20;
     if (CropFun & (CROP_LEFT_10 | OFFSET_LEFT_10))
       ret += stepX;
     else if (CropFun & (CROP_LEFT_20 | OFFSET_LEFT_20))
@@ -388,7 +397,7 @@ private:
 
   template <Juint CropFun> static Jint right(Jint minX, Jint maxX) {
     auto &&ret = maxX;
-    auto &&stepX = (maxX - minX) / 10;
+    auto &&stepX = (maxX - minX) / 20;
     if (CropFun & (CROP_RIGHT_10 | OFFSET_RIGHT_10))
       ret -= stepX;
     else if (CropFun & (CROP_RIGHT_20 | OFFSET_RIGHT_20))
@@ -405,21 +414,23 @@ private:
   }
 
 public:
-  explicit LabelImageConver(SP<LabelImageXML> const &v) {
+  explicit LabelImageConver(SP<LabelImageXML> v) : mXml(move(v)) {}
+
+  template <Juint Crop> void execute() {
     Jint minX = 0;
     Jint minY = 0;
     Jint maxX = 0;
     Jint maxY = 0;
 
-    auto bndbox = v->getObjects().front().getBndbox();
-    auto object = v->getObjects().front();
+    auto bndbox = this->mXml->getObjects().front().getBndbox();
+    auto object = this->mXml->getObjects().front();
 
-    auto &&width = v->getSize().getWidth();
-    auto &&height = v->getSize().getHeight();
-    auto &&minXt = v->getObjects().front().getBndbox().getMinX();
-    auto &&minYt = v->getObjects().front().getBndbox().getMinY();
-    auto &&maxXt = v->getObjects().front().getBndbox().getMaxX();
-    auto &&maxYt = v->getObjects().front().getBndbox().getMaxY();
+    auto &&width = this->mXml->getSize().getWidth();
+    auto &&height = this->mXml->getSize().getHeight();
+    auto &&minXt = this->mXml->getObjects().front().getBndbox().getMinX();
+    auto &&minYt = this->mXml->getObjects().front().getBndbox().getMinY();
+    auto &&maxXt = this->mXml->getObjects().front().getBndbox().getMaxX();
+    auto &&maxYt = this->mXml->getObjects().front().getBndbox().getMaxY();
 
     auto &&bunchTop = CROP_TOP_10 | CROP_TOP_20 | CROP_TOP_30 | CROP_TOP_40 | OFFSET_TOP_10 |
                       OFFSET_TOP_20 | OFFSET_BOTTOM_10 | OFFSET_BOTTOM_20;
@@ -452,7 +463,7 @@ public:
       bndbox.setMaxY(maxY);
 
     object.setBndbox(bndbox);
-    v->addObject(object);
+    this->mXml->addObject(object);
   }
 };
 
@@ -463,6 +474,8 @@ private:
   constexpr static Jchar MODEL_WRITE[] = "wb";
 
   FILE *mOutputFile;
+  SP<LabelImageXML> mInputXmls;
+  std::string mOutputPath;
 
   static void stepAnnotation(QDomDocument &doc, QDomElement &root, SP<LabelImageXML> const &in) {
     auto &&folder = doc.createElement(LabelImageXMLTarget::FOLDER);
@@ -565,32 +578,34 @@ private:
   }
 
 public:
-  explicit LabelImageXMLExporter(SP<LabelImageXML> const &input, std::string const &output)
-      : mOutputFile() {
+  explicit LabelImageXMLExporter(SP<LabelImageXML> input, std::string output)
+      : mOutputFile(), mInputXmls(move(input)), mOutputPath(move(output)) {}
+
+  ~LabelImageXMLExporter() {
+    if (this->mOutputFile != nullptr)
+      fclose(this->mOutputFile);
+  }
+
+  void exported() {
     QDomDocument document;
 
-    if (output.empty())
+    if (this->mOutputPath.empty())
       return;
 
-    this->mOutputFile = fopen(output.data(), MODEL_WRITE);
+    this->mOutputFile = fopen(this->mOutputPath.c_str(), MODEL_WRITE);
     if (this->mOutputFile == nullptr)
       return;
 
     auto &&root = document.createElement(LabelImageXMLTarget::ROOT);
-    stepAnnotation(document, root, input);
-    stepSource(document, root, input);
-    stepSize(document, root, input);
-    stepObjects(document, root, input);
+    stepAnnotation(document, root, this->mInputXmls);
+    stepSource(document, root, this->mInputXmls);
+    stepSize(document, root, this->mInputXmls);
+    stepObjects(document, root, this->mInputXmls);
     document.appendChild(root);
 
     auto &&content = document.toString(SIZE_SPACE).toStdString();
     fwrite(content.data(), content.size(), 1, this->mOutputFile);
     fflush(this->mOutputFile);
-  }
-
-  ~LabelImageXMLExporter() {
-    if (this->mOutputFile != nullptr)
-      fclose(this->mOutputFile);
   }
 };
 

@@ -34,7 +34,7 @@ public:
 
     auto &&prg = Program(all.size());
     for (auto row : all) {
-      auto &&mat = String::format(COMMAND_PULL_LOCAL, row.getRow().data(), output);
+      auto &&mat = String::format(COMMAND_PULL_LOCAL, row.getRow().c_str(), output);
       System sys(mat);
       prg.updateOne();
     }

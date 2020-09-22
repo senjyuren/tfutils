@@ -11,6 +11,13 @@
 
 #include <QtXml/QtXml>
 
+#include <arpa/inet.h>
+#include <fcntl.h>
+#include <netinet/in.h>
+#include <sys/epoll.h>
+#include <sys/socket.h>
+#include <unistd.h>
+
 using Jchar = char;
 using Jint = int;
 using Jlong = long long;
@@ -28,7 +35,7 @@ template <class T> using UP = std::unique_ptr<T>;
 
 template <class T>
 constexpr static typename RemoveType<T>::Type &&move(typename RemoveType<T>::Type &&t) {
-  return static_cast<typename RemoveType<T>::Type>(t);
+  return static_cast<typename RemoveType<T>::Type &&>(t);
 }
 
 template <class T, class... Args>

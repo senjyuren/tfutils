@@ -3,6 +3,137 @@
 
 namespace tfutils {
 
+class TensorflowCheck : public AbstractCommand {
+private:
+  constexpr static Jchar FORMAT_FILENAME[] = "file: %s-%s-%s";
+  constexpr static Jchar FORMAT_PATH[] = "file: %s-%s-%s";
+  constexpr static Jchar FORMAT_SIZE[] = "file: %s-%s-%dx%d";
+  constexpr static Jchar FORMAT_NAME[] = "file: %s-%s-%s";
+
+  static void print(SP<LabelImageXML> const &xml, std::string const &mark,
+                    std::string const &name) {
+    if (mark == LabelImageXMLTarget::FILENAME) {
+      Log::info(FORMAT_FILENAME, name.c_str(), mark.c_str(), xml->getFilename().c_str());
+    } else if (mark == LabelImageXMLTarget::PATH) {
+      Log::info(FORMAT_PATH, name.c_str(), mark.c_str(), xml->getPath().c_str());
+    } else if (mark == LabelImageXMLTarget::SIZE) {
+      Log::info(FORMAT_SIZE, name.c_str(), mark.c_str(), xml->getSize().getWidth(),
+                xml->getSize().getHeight());
+    } else if (mark == LabelImageXMLTarget::O_NAME) {
+      for (auto &&obj : xml->getObjects())
+        Log::info(FORMAT_NAME, name.c_str(), mark.c_str(), obj.getName().c_str());
+    }
+  }
+
+public:
+  using AbstractCommand::AbstractCommand;
+
+  Jint execute(UP<ICommandArgs> const &v) override {
+    if (v->getLength() < 2)
+      return -1;
+
+    auto &&path = std::filesystem::path((*v)[0]);
+    auto &&mark = std::string((*v)[1]);
+
+    if (!std::filesystem::is_directory(path)) {
+      auto &&xml = make<LabelImageXML>(path);
+      print(xml, mark, path.filename());
+    } else {
+      auto &&file = make<File>();
+      auto &&list = file->getFilesInDirectory(path);
+
+      for (auto &&one : list) {
+        auto &&xml = make<LabelImageXML>(one->getAbstractPath());
+        print(xml, mark, one->getName());
+      }
+    }
+    return 0;
+  }
+};
+
+class TensorflowRotate : public AbstractCommand {
+private:
+  constexpr static Jchar FORMAT_NAME[] = "file: %s-%s-%s, replace value: %s";
+
+  static void replace(SP<LabelImageXML> const &xml, std::string const &mark,
+                      std::string const &name, std::string const &value) {
+    for (auto &&obj : xml->getObjects()) {
+      Log::info(FORMAT_NAME, name.c_str(), mark.c_str(), obj.getName().c_str(), value.c_str());
+      obj.setName(value);
+    }
+  }
+
+public:
+  using AbstractCommand::AbstractCommand;
+
+  Jint execute(UP<ICommandArgs> const &v) override {
+    if (v->getLength() < 3)
+      return -1;
+
+    auto &&path = std::filesystem::path((*v)[0]);
+    auto &&mark = std::string((*v)[1]);
+    auto &&value = std::string((*v)[2]);
+
+    if (!std::filesystem::is_directory(path)) {
+      auto &&xml = make<LabelImageXML>(path);
+      replace(xml, mark, path.filename(), value);
+    } else {
+      auto &&file = make<File>();
+      auto &&list = file->getFilesInDirectory(path);
+
+      for (auto &&one : list) {
+        auto &&xml = make<LabelImageXML>(one->getAbstractPath());
+        replace(xml, mark, one->getName(), value);
+        LabelImageXMLExporter(xml, one->getAbstractPath()).exported();
+      }
+    }
+    return 0;
+  }
+};
+
+class TensorflowClone : public AbstractCommand {
+private:
+  constexpr static Jchar FORMAT_FILE_NAME[] = "%d%s";
+  constexpr static Jchar FORMAT_FILE_PATH[] = "%s/%s";
+
+public:
+  using AbstractCommand::AbstractCommand;
+
+  Jint execute(UP<ICommandArgs> const &v) override {
+    Juint i = 0;
+
+    if (v->getLength() < 2)
+      return -1;
+
+    auto &&file = (*v)[0];
+    auto &&length = std::strtol((*v)[1], nullptr, 10);
+
+    if (v->getLength() == 3)
+      i = std::strtol((*v)[2], nullptr, 10);
+
+    auto &&basexml = make<LabelImageXML>(file);
+    auto &&oldpre = std::filesystem::path(file).extension();
+    auto &&prefix = std::filesystem::path(basexml->getFilename()).extension();
+    auto &&basepath = std::filesystem::path(basexml->getPath()).parent_path();
+
+    auto &&prog = Program(length - i);
+    for (; i <= length; ++i) {
+      auto &&xmlNew = *basexml;
+      auto &&filename = String::format(FORMAT_FILE_NAME, i, prefix.c_str());
+      xmlNew.setFilename(filename);
+      xmlNew.setPath(String::format(FORMAT_FILE_PATH, basepath.c_str(), filename.c_str()));
+
+      auto &&newfilename = String::format(FORMAT_FILE_NAME, i, oldpre.c_str());
+      LabelImageXMLExporter(SP<LabelImageXML>(&xmlNew, [](LabelImageXML *) {}), newfilename)
+          .exported();
+
+      prog.updateOne();
+    }
+
+    return 0;
+  }
+};
+
 class TensorflowConvert : public AbstractCommand {
 private:
   constexpr static Jint COMMAND_WIDTH = 224;
@@ -25,10 +156,10 @@ public:
     auto &&indir = (*v)[0];
     auto &&oudir = (*v)[1];
 
-    if (v->getLength() > 2)
+    if (v->getLength() > 3) {
       width = std::stoi((*v)[2]);
-    else if (v->getLength() > 3)
       height = std::stoi((*v)[3]);
+    }
 
     if ((!File::isExist(indir)) || (!File::isExist(oudir)))
       return -1;
@@ -38,11 +169,12 @@ public:
     auto &&dir = file->getFilesInDirectory(indir);
     Program prog(dir.size());
     for (auto &&p : dir) {
-      auto &&name = p->getName().data();
-      auto &&path = p->getAbstractPath().data();
+      auto &&name = p->getName();
+      auto &&path = p->getAbstractPath();
 
-      auto &&output = String::format(FORMAT_LINUX_OUTPUT, (*v)[1], name);
-      auto &&command = String::format(FORMAT_LINUX_CONVERT, width, height, path, output.data());
+      auto &&output = String::format(FORMAT_LINUX_OUTPUT, oudir, name.c_str());
+      auto &&command =
+          String::format(FORMAT_LINUX_CONVERT, width, height, path.c_str(), output.c_str());
 
       System sys(command);
       prog.updateOne();
@@ -172,7 +304,7 @@ public:
   using AbstractCommand::AbstractCommand;
 
   Jint execute(UP<ICommandArgs> const &v) override {
-    Jchar const *target = nullptr;
+    std::string target;
 
     UP<File> file(new File());
     SP<GoogleCloudCSV> csv = nullptr;
@@ -191,18 +323,18 @@ public:
       xml = make<LabelImageXML>(path->getAbstractPath());
       auto &&width = xml->getSize().getWidth();
       auto &&height = xml->getSize().getHeight();
-      auto &&filename = xml->getFilename().data();
+      auto &&filename = xml->getFilename();
 
       for (auto &&object : xml->getObjects()) {
-        auto &&name = object.getName().data();
+        auto &&name = object.getName();
         auto &&minX = object.getBndbox().getMinX();
         auto &&minY = object.getBndbox().getMinY();
         auto &&maxX = object.getBndbox().getMaxX();
         auto &&maxY = object.getBndbox().getMaxY();
 
-        target = target == nullptr ? name : target;
+        auto &&newTarget = target.empty() ? name : target;
         auto &&format = GoogleCloudCSVFormat(width, height, minX, minY, maxX, maxY, filename,
-                                             target, SYMBOL_MARK, SYMBOL_PATH);
+                                             newTarget, SYMBOL_MARK, SYMBOL_PATH);
         csv->add(format);
       }
 
@@ -222,80 +354,84 @@ private:
   constexpr static Jchar MODEL_OFFSET[] = "offset";
 
   static void converCrop(SP<LabelImageXML> const &v) {
-    LabelImageConver<CROP_TOP_10> top10(v);
-    LabelImageConver<CROP_TOP_20> top20(v);
-    LabelImageConver<CROP_TOP_30> top30(v);
-    LabelImageConver<CROP_TOP_40> top40(v);
+    LabelImageConver object(v);
 
-    LabelImageConver<CROP_BOTTOM_10> bottom10(v);
-    LabelImageConver<CROP_BOTTOM_20> bottom20(v);
-    LabelImageConver<CROP_BOTTOM_30> bottom30(v);
-    LabelImageConver<CROP_BOTTOM_40> bottom40(v);
+    object.execute<CROP_TOP_10>();
+    object.execute<CROP_TOP_20>();
+    object.execute<CROP_TOP_30>();
+    object.execute<CROP_TOP_40>();
 
-    LabelImageConver<CROP_LEFT_10> left10(v);
-    LabelImageConver<CROP_LEFT_20> left20(v);
-    LabelImageConver<CROP_LEFT_30> left30(v);
-    LabelImageConver<CROP_LEFT_40> left40(v);
+    object.execute<CROP_BOTTOM_10>();
+    object.execute<CROP_BOTTOM_20>();
+    object.execute<CROP_BOTTOM_30>();
+    object.execute<CROP_BOTTOM_40>();
 
-    LabelImageConver<CROP_RIGHT_10> right10(v);
-    LabelImageConver<CROP_RIGHT_20> right20(v);
-    LabelImageConver<CROP_RIGHT_30> right30(v);
-    LabelImageConver<CROP_RIGHT_40> right40(v);
+    object.execute<CROP_LEFT_10>();
+    object.execute<CROP_LEFT_20>();
+    object.execute<CROP_LEFT_30>();
+    object.execute<CROP_LEFT_40>();
 
-    LabelImageConver<CROP_LEFT_10 | CROP_TOP_10> lt11(v);
-    LabelImageConver<CROP_LEFT_10 | CROP_TOP_20> lt12(v);
-    LabelImageConver<CROP_LEFT_20 | CROP_TOP_10> lt21(v);
-    LabelImageConver<CROP_LEFT_20 | CROP_TOP_20> lt22(v);
+    object.execute<CROP_RIGHT_10>();
+    object.execute<CROP_RIGHT_20>();
+    object.execute<CROP_RIGHT_30>();
+    object.execute<CROP_RIGHT_40>();
 
-    LabelImageConver<CROP_RIGHT_10 | CROP_TOP_10> rt11(v);
-    LabelImageConver<CROP_RIGHT_10 | CROP_TOP_20> rt12(v);
-    LabelImageConver<CROP_RIGHT_20 | CROP_TOP_10> rt21(v);
-    LabelImageConver<CROP_RIGHT_20 | CROP_TOP_20> rt22(v);
+    object.execute<CROP_LEFT_10 | CROP_TOP_10>();
+    object.execute<CROP_LEFT_10 | CROP_TOP_20>();
+    object.execute<CROP_LEFT_20 | CROP_TOP_10>();
+    object.execute<CROP_LEFT_20 | CROP_TOP_20>();
 
-    LabelImageConver<CROP_LEFT_10 | CROP_BOTTOM_10> lb11(v);
-    LabelImageConver<CROP_LEFT_10 | CROP_BOTTOM_20> lb12(v);
-    LabelImageConver<CROP_LEFT_20 | CROP_BOTTOM_10> lb21(v);
-    LabelImageConver<CROP_LEFT_20 | CROP_BOTTOM_20> lb22(v);
+    object.execute<CROP_RIGHT_10 | CROP_TOP_10>();
+    object.execute<CROP_RIGHT_10 | CROP_TOP_20>();
+    object.execute<CROP_RIGHT_20 | CROP_TOP_10>();
+    object.execute<CROP_RIGHT_20 | CROP_TOP_20>();
 
-    LabelImageConver<CROP_RIGHT_10 | CROP_BOTTOM_10> rb11(v);
-    LabelImageConver<CROP_RIGHT_10 | CROP_BOTTOM_20> rb12(v);
-    LabelImageConver<CROP_RIGHT_20 | CROP_BOTTOM_10> rb21(v);
-    LabelImageConver<CROP_RIGHT_20 | CROP_BOTTOM_20> rb22(v);
+    object.execute<CROP_LEFT_10 | CROP_BOTTOM_10>();
+    object.execute<CROP_LEFT_10 | CROP_BOTTOM_20>();
+    object.execute<CROP_LEFT_20 | CROP_BOTTOM_10>();
+    object.execute<CROP_LEFT_20 | CROP_BOTTOM_20>();
 
-    LabelImageConver<CROP_RIGHT_10 | CROP_LEFT_10> rl10(v);
-    LabelImageConver<CROP_RIGHT_20 | CROP_LEFT_20> rl20(v);
+    object.execute<CROP_RIGHT_10 | CROP_BOTTOM_10>();
+    object.execute<CROP_RIGHT_10 | CROP_BOTTOM_20>();
+    object.execute<CROP_RIGHT_20 | CROP_BOTTOM_10>();
+    object.execute<CROP_RIGHT_20 | CROP_BOTTOM_20>();
 
-    LabelImageConver<CROP_TOP_10 | CROP_BOTTOM_10> tb10(v);
-    LabelImageConver<CROP_TOP_20 | CROP_BOTTOM_20> tb20(v);
+    object.execute<CROP_RIGHT_10 | CROP_LEFT_10>();
+    object.execute<CROP_RIGHT_20 | CROP_LEFT_20>();
 
-    LabelImageConver<CROP_TOP_10 | CROP_BOTTOM_10 | CROP_RIGHT_10 | CROP_LEFT_10> tblr10(v);
-    LabelImageConver<CROP_TOP_20 | CROP_BOTTOM_20 | CROP_RIGHT_20 | CROP_LEFT_20> tblr20(v);
+    object.execute<CROP_TOP_10 | CROP_BOTTOM_10>();
+    object.execute<CROP_TOP_20 | CROP_BOTTOM_20>();
+
+    object.execute<CROP_TOP_10 | CROP_BOTTOM_10 | CROP_RIGHT_10 | CROP_LEFT_10>();
+    object.execute<CROP_TOP_20 | CROP_BOTTOM_20 | CROP_RIGHT_20 | CROP_LEFT_20>();
   }
 
   static void convertOffset(SP<LabelImageXML> const &v) {
-    LabelImageConver<OFFSET_TOP_10> top10(v);
-    LabelImageConver<OFFSET_TOP_20> top20(v);
+    LabelImageConver object(v);
 
-    LabelImageConver<OFFSET_BOTTOM_10> bottom10(v);
-    LabelImageConver<OFFSET_BOTTOM_20> bottom20(v);
+    object.execute<OFFSET_TOP_10>();
+    object.execute<OFFSET_TOP_20>();
 
-    LabelImageConver<OFFSET_LEFT_10> left10(v);
-    LabelImageConver<OFFSET_LEFT_20> left20(v);
+    object.execute<OFFSET_BOTTOM_10>();
+    object.execute<OFFSET_BOTTOM_20>();
 
-    LabelImageConver<OFFSET_RIGHT_10> right10(v);
-    LabelImageConver<OFFSET_RIGHT_20> right20(v);
+    object.execute<OFFSET_LEFT_10>();
+    object.execute<OFFSET_LEFT_20>();
 
-    LabelImageConver<OFFSET_TOP_10 | OFFSET_LEFT_10> tl10(v);
-    LabelImageConver<OFFSET_TOP_20 | OFFSET_LEFT_20> tl20(v);
+    object.execute<OFFSET_RIGHT_10>();
+    object.execute<OFFSET_RIGHT_20>();
 
-    LabelImageConver<OFFSET_TOP_20 | OFFSET_RIGHT_10> tr10(v);
-    LabelImageConver<OFFSET_TOP_20 | OFFSET_RIGHT_20> tr20(v);
+    object.execute<OFFSET_TOP_10 | OFFSET_LEFT_10>();
+    object.execute<OFFSET_TOP_20 | OFFSET_LEFT_20>();
 
-    LabelImageConver<OFFSET_BOTTOM_10 | OFFSET_LEFT_10> bl10(v);
-    LabelImageConver<OFFSET_BOTTOM_20 | OFFSET_LEFT_20> bl20(v);
+    object.execute<OFFSET_TOP_20 | OFFSET_RIGHT_10>();
+    object.execute<OFFSET_TOP_20 | OFFSET_RIGHT_20>();
 
-    LabelImageConver<OFFSET_BOTTOM_10 | OFFSET_RIGHT_10> br10(v);
-    LabelImageConver<OFFSET_BOTTOM_20 | OFFSET_RIGHT_20> br20(v);
+    object.execute<OFFSET_BOTTOM_10 | OFFSET_LEFT_10>();
+    object.execute<OFFSET_BOTTOM_20 | OFFSET_LEFT_20>();
+
+    object.execute<OFFSET_BOTTOM_10 | OFFSET_RIGHT_10>();
+    object.execute<OFFSET_BOTTOM_20 | OFFSET_RIGHT_20>();
   }
 
 public:
@@ -319,7 +455,7 @@ public:
       else if (strcmp(model, MODEL_OFFSET) == 0)
         convertOffset(xml);
 
-      LabelImageXMLExporter ex(xml, out);
+      LabelImageXMLExporter(xml, out).exported();
       return 0;
     } else if ((!File::isFile(in)) && (!File::isFile(out))) {
       UP<File> file(new File());
@@ -335,7 +471,7 @@ public:
         else if (strcmp(model, MODEL_OFFSET) == 0)
           convertOffset(xml);
 
-        LabelImageXMLExporter ex(xml, newPath);
+        LabelImageXMLExporter(xml, newPath).exported();
         prog.updateOne();
       }
       return 0;

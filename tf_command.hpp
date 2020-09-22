@@ -26,8 +26,6 @@ public:
 
   Jchar const *const *operator*() override { return this->mArgs; };
 
-  Jint getSize() override { return this->mArgsSize; }
-
   Jint getLength() override { return this->mArgsLength; }
 
   Jbool isEmpty() override { return (this->mArgsLength == 0); }

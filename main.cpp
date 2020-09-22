@@ -15,7 +15,10 @@ private:
       "  convert InDirectory OutDirectory [224] [224]                      \n"
       "  replace a.csv gs://                                               \n"
       "  csv InDirectory a.csv [target]                                    \n"
-      "  transform [InDirectory|a.xml] [OutDirectory|b.xml] [crop|offset]  \n";
+      "  transform [InDirectory|a.xml] [OutDirectory|b.xml] [crop|offset]  \n"
+      "  clone 0.xml 100 [1]                                               \n"
+      "  check [InDirectory|a.xml] [filename|name|path|size]               \n"
+      "  rotate [InDirectory|a.xml] name value                             \n";
 
 public:
   using tfutils::AbstractCommand::AbstractCommand;
@@ -38,6 +41,9 @@ constexpr Jchar COMMAND_ADB_REMOVE[] = "remove";
 constexpr Jchar COMMAND_ADB_SCREENSHOT[] = "cap";
 
 constexpr Jchar COMMAND_TENSORFLOW_CSV[] = "csv";
+constexpr Jchar COMMAND_TENSORFLOW_CHECK[] = "check";
+constexpr Jchar COMMAND_TENSORFLOW_CLONE[] = "clone";
+constexpr Jchar COMMAND_TENSORFLOW_ROTATE[] = "rotate";
 constexpr Jchar COMMAND_TENSORFLOW_REPLACE[] = "replace";
 constexpr Jchar COMMAND_TENSORFLOW_CONVERT[] = "convert";
 constexpr Jchar COMMAND_TENSORFLOW_TRANSFORM[] = "transform";
@@ -56,6 +62,9 @@ Jint main(Jint argc, Jchar *args[]) {
 
   // tensorflow commands
   executor.add(new tfutils::TensorflowCSV(COMMAND_TENSORFLOW_CSV));
+  executor.add(new tfutils::TensorflowCheck(COMMAND_TENSORFLOW_CHECK));
+  executor.add(new tfutils::TensorflowClone(COMMAND_TENSORFLOW_CLONE));
+  executor.add(new tfutils::TensorflowRotate(COMMAND_TENSORFLOW_ROTATE));
   executor.add(new tfutils::TensorflowConvert(COMMAND_TENSORFLOW_CONVERT));
   executor.add(new tfutils::TensorflowReplace(COMMAND_TENSORFLOW_REPLACE));
   executor.add(new tfutils::TensorflowTransform(COMMAND_TENSORFLOW_TRANSFORM));

@@ -13,9 +13,9 @@ private:
 public:
   using AbstractCommand::AbstractCommand;
 
-  Jint execute(UP<ICommandArgs> const &v) override {
-    Jchar const *output = COMMAND_OUT;
-    Jchar const *format = COMMAND_FROM;
+  Jint execute(const UP<ICommandArgs>  &v) override {
+    const Jchar *output = COMMAND_OUT;
+    const Jchar *format = COMMAND_FROM;
 
     if (v->isEmpty())
       return -1;
@@ -35,7 +35,7 @@ public:
     auto &&prg = Program(all.size());
     for (auto row : all) {
       auto &&mat = String::format(COMMAND_PULL_LOCAL, row.getRow().c_str(), output);
-      System sys(mat);
+      System(mat).execute();
       prg.updateOne();
     }
     return 0;
@@ -50,7 +50,7 @@ private:
 public:
   using AbstractCommand::AbstractCommand;
 
-  Jint execute(UP<ICommandArgs> const &v) override {
+  Jint execute(const UP<ICommandArgs> &v) override {
     if (v->getLength() != 2)
       return -1;
 
@@ -65,7 +65,7 @@ public:
     auto &&prg = Program(all.size());
     for (auto row : all) {
       auto &&mat = String::format(COMMAND_REMOVE_LOCAL, row.getRow().data());
-      System sys(mat);
+      System(mat).execute();
       prg.updateOne();
     }
     return 0;
@@ -88,20 +88,20 @@ public:
     this->mArgs->push(COMMAND_FILE);
   }
 
-  explicit ADBScreenCap(Jchar const *v)
+  explicit ADBScreenCap(const Jchar *v)
       : AbstractCommand(v), mArgs(new CommandArgs<SIZE_COMMAND_ARGS>()) {
     this->mArgs->push(COMMAND_PATH);
     this->mArgs->push(COMMAND_FILE);
   }
 
-  Jint execute(UP<ICommandArgs> const &v) override {
+  Jint execute(const UP<ICommandArgs> &v) override {
     SP<AbstractCommand> executor;
 
     if (v->getLength() == 1)
       this->mArgs->push((*v)[0]);
 
     auto &&cmd = String::format(COMMAND_SCREENCAP, COMMAND_PATH, COMMAND_FILE);
-    System sys(cmd);
+    System(cmd).execute();
 
     executor = make<ADBPull>();
     executor->execute(this->mArgs);

@@ -10,7 +10,7 @@ template <class T> struct IBuffer {
 
   virtual T operator[](Jint v) = 0;
 
-  virtual T const *operator*() = 0;
+  virtual const T *operator*() = 0;
 
   virtual Jint getLength() = 0;
 
@@ -34,14 +34,14 @@ private:
     return (*obj);
   }
 
-  template <class... Args> std::string input(std::string const &format, Args... args) {
+  template <class... Args> std::string input(const std::string &format, Args... args) {
     auto &&len = snprintf(this->mBuffer, sizeof(this->mBuffer), format.c_str(), args...);
     this->mBuffer[len] = 0x00;
     return this->mBuffer;
   }
 
 public:
-  template <class... Args> static std::string format(std::string const &format, Args... args) {
+  template <class... Args> static std::string format(const std::string &format, Args... args) {
     return String::getInstance().input(format, args...);
   }
 };
@@ -66,7 +66,7 @@ private:
     return (*obj);
   }
 
-  template <class... Args> std::string format(std::string const &format, Args... args) {
+  template <class... Args> std::string format(const std::string &format, Args... args) {
     if (sizeof...(args) < 1) {
       memcpy(this->mBuffer, format.data(), format.size());
       this->mBuffer[format.size()] = 0x00;
@@ -78,7 +78,7 @@ private:
   }
 
 public:
-  template <Jchar const *Tag = TAG, class... Args>
+  template <const Jchar *Tag = TAG, class... Args>
   static void info(std::string const &format, Args... args) {
     if (format.empty())
       return;
@@ -112,7 +112,7 @@ private:
 
   constexpr static Jchar CR[] = "\n";
   constexpr static Jchar SB_LEFT[] = "[";
-  constexpr static Jchar SB_RIGHT[] = "]\r";
+  constexpr static Jchar SB_RIGHT[] = "] %03d%%\r";
   constexpr static Jchar WL[] = "#";
   constexpr static Jchar US[] = "_";
 
@@ -131,8 +131,8 @@ private:
         printf(US);
     }
 
-    printf(SB_RIGHT);
-    if (i == BASE_NUMBER)
+    printf(SB_RIGHT, (location % BASE_NUMBER == 0 ? 100 : location % BASE_NUMBER));
+    if (location == BASE_NUMBER)
       printf(CR);
   }
 
@@ -164,18 +164,21 @@ private:
 
   Jchar mCache[SIZE_CACHE];
   Jchar mCacheNew[SIZE_CACHE];
+  std::string mCommand;
   std::list<SystemRow> mRows;
 
 public:
-  explicit System(std::string const &v) : mCache(), mCacheNew(), mRows() {
+  explicit System(std::string v) : mCache(), mCacheNew(), mCommand(move(v)), mRows() {}
+
+  void execute() {
     Jint i = 0;
     Jint j = 0;
     Jint retLen = 0;
 
-    if (v.empty())
+    if (this->mCommand.empty())
       return;
 
-    auto &&ctx = popen(v.c_str(), MODEL_READ);
+    auto &&ctx = popen(this->mCommand.c_str(), MODEL_READ);
 
     do {
       retLen = fread(this->mCache, 1, sizeof(this->mCache), ctx);

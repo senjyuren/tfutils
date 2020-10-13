@@ -10,8 +10,8 @@ private:
   constexpr static Jchar FORMAT_SIZE[] = "file: %s-%s-%dx%d";
   constexpr static Jchar FORMAT_NAME[] = "file: %s-%s-%s";
 
-  static void print(SP<LabelImageXML> const &xml, std::string const &mark,
-                    std::string const &name) {
+  static void print(const SP<LabelImageXML> &xml, const std::string &mark,
+                    const std::string &name) {
     if (mark == LabelImageXMLTarget::FILENAME) {
       Log::info(FORMAT_FILENAME, name.c_str(), mark.c_str(), xml->getFilename().c_str());
     } else if (mark == LabelImageXMLTarget::PATH) {
@@ -28,7 +28,7 @@ private:
 public:
   using AbstractCommand::AbstractCommand;
 
-  Jint execute(UP<ICommandArgs> const &v) override {
+  Jint execute(const UP<ICommandArgs> &v) override {
     if (v->getLength() < 2)
       return -1;
 
@@ -55,8 +55,8 @@ class TensorflowRotate : public AbstractCommand {
 private:
   constexpr static Jchar FORMAT_NAME[] = "file: %s-%s-%s, replace value: %s";
 
-  static void replace(SP<LabelImageXML> const &xml, std::string const &mark,
-                      std::string const &name, std::string const &value) {
+  static void replace(const SP<LabelImageXML> &xml, const std::string &mark,
+                      const std::string &name, const std::string &value) {
     for (auto &&obj : xml->getObjects()) {
       Log::info(FORMAT_NAME, name.c_str(), mark.c_str(), obj.getName().c_str(), value.c_str());
       obj.setName(value);
@@ -66,7 +66,7 @@ private:
 public:
   using AbstractCommand::AbstractCommand;
 
-  Jint execute(UP<ICommandArgs> const &v) override {
+  Jint execute(const UP<ICommandArgs> &v) override {
     if (v->getLength() < 3)
       return -1;
 
@@ -99,7 +99,7 @@ private:
 public:
   using AbstractCommand::AbstractCommand;
 
-  Jint execute(UP<ICommandArgs> const &v) override {
+  Jint execute(const UP<ICommandArgs> &v) override {
     Juint i = 0;
 
     if (v->getLength() < 2)
@@ -145,7 +145,7 @@ private:
 public:
   using AbstractCommand::AbstractCommand;
 
-  Jint execute(UP<ICommandArgs> const &v) override {
+  Jint execute(const UP<ICommandArgs> &v) override {
     Jint width = COMMAND_WIDTH;
     Jint height = COMMAND_HEIGHT;
     UP<File> file(new File());
@@ -185,29 +185,11 @@ public:
 
 class TensorflowReplace : public AbstractCommand {
 private:
-  constexpr static Jint SIZE_BUFFER = 128;
-  constexpr static Jint SIZE_ARGS = 8;
-
-  constexpr static Jchar SYMBOL_MARK = '^';
-  constexpr static Jchar SYMBOL_PATH = '$';
-  constexpr static Jchar MODEL_READ[] = "rb";
-  constexpr static Jchar MODEL_WRITE[] = "wb";
-  constexpr static Jchar NAME_TEMP[] = "temp.csv";
-
-  constexpr static Jchar TARGET_TRAIN[] = "TRAIN";
-  constexpr static Jchar TARGET_VALIDATION[] = "VALIDATION";
-  constexpr static Jchar TARGET_TEST[] = "TEST";
-
-  Jchar mBuffer[SIZE_BUFFER];
-
   FILE *mOldFile;
   FILE *mNewFile;
-  UP<ICommandArgs> mArgs;
 
 public:
-  explicit TensorflowReplace(Jchar const *v)
-      : AbstractCommand(v), mBuffer(), mOldFile(), mNewFile(), mArgs(new CommandArgs<SIZE_ARGS>()) {
-  }
+  explicit TensorflowReplace(const Jchar *v) : AbstractCommand(v), mOldFile(), mNewFile() {}
 
   ~TensorflowReplace() override {
     if (this->mOldFile != nullptr)
@@ -216,94 +198,61 @@ public:
       fclose(this->mNewFile);
   }
 
-  Jint execute(UP<ICommandArgs> const &v) override {
-    Jint i = 0;
-    Jint retLen = 0;
-    Jfloat counts = 0;
-    Jfloat current = 0;
-    SP<AbstractCommand> command;
+  Jint execute(const UP<ICommandArgs> &v) override {
+    std::map<std::string, Jfloat> classificationCount;
+    std::map<std::string, Jfloat> classificationTotal;
+    std::map<std::string, std::list<TFCSVRow *>> classification;
 
     if (v->getLength() < 2)
       return -1;
 
-    auto &&filePath = (*v)[0];
+    auto &&file = (*v)[0];
     auto &&symbol = (*v)[1];
-    auto &&symbolLen = strlen(symbol);
-    this->mOldFile = fopen(filePath, MODEL_READ);
-    this->mNewFile = fopen(NAME_TEMP, MODEL_WRITE);
-    if ((this->mOldFile == nullptr) || (this->mNewFile == nullptr))
-      return -1;
 
-    do {
-      retLen = fread(this->mBuffer, 1, sizeof(this->mBuffer), this->mOldFile);
-      if (retLen > 0) {
-        for (i = 0; i < retLen; ++i) {
-          if (this->mBuffer[i] == SYMBOL_MARK)
-            ++counts;
-        }
+    auto &&inCSV = make<TFCSV>(file);
+    inCSV->parse();
+
+    auto &&prog = Program(inCSV->getRows().size() * 3);
+    for (auto &&row : inCSV->getRows()) {
+      row.replacePath(symbol);
+      classification[row.getTarget()].emplace_back(&row);
+      prog.updateOne();
+    }
+
+    for (auto &&kv : classification) {
+      for (auto &&row : classification[kv.first]) {
+        ++classificationTotal[row->getTarget()];
+        prog.updateOne();
       }
-    } while (retLen == sizeof(this->mBuffer));
-    fseek(this->mOldFile, 0, SEEK_SET);
+    }
 
-    do {
-      retLen = fread(this->mBuffer, 1, sizeof(this->mBuffer), this->mOldFile);
-      if (retLen > 0) {
-        for (i = 0; i < retLen; ++i) {
-          if (this->mBuffer[i] == SYMBOL_PATH) {
-            fwrite(symbol, symbolLen, 1, this->mNewFile);
-          } else if (this->mBuffer[i] == SYMBOL_MARK) {
-            Jint targetLen = 0;
-            Jchar const *target = nullptr;
-            auto &&proportion = current / counts;
-
-            if (proportion <= 0.8)
-              target = TARGET_TRAIN;
-            else if ((proportion > 0.8) && (proportion <= 0.9))
-              target = TARGET_VALIDATION;
-            else
-              target = TARGET_TEST;
-
-            targetLen = strlen(target);
-            fwrite(target, targetLen, 1, this->mNewFile);
-            ++current;
-          } else {
-            fwrite(&this->mBuffer[i], 1, 1, this->mNewFile);
-          }
-        }
-
-        fflush(this->mNewFile);
+    for (auto &&kv : classification) {
+      for (auto &&row : classification[kv.first]) {
+        auto &&remainder =
+            classificationCount[row->getTarget()] / classificationTotal[row->getTarget()];
+        if (remainder < 0.8)
+          row->setModel(TFCSVRow::TARGET_TRAIN);
+        else if (remainder >= 0.8 && remainder < 0.9)
+          row->setModel(TFCSVRow::TARGET_VALIDATION);
+        else
+          row->setModel(TFCSVRow::TARGET_TEST);
+        ++classificationCount[row->getTarget()];
+        prog.updateOne();
       }
-    } while (retLen == sizeof(this->mBuffer));
+    }
 
-    this->mArgs->push(filePath);
-    command = make<OSRemove>();
-    if (command->execute(this->mArgs) != 0)
-      return -1;
-
-    this->mArgs->clean();
-    this->mArgs->push(NAME_TEMP);
-    this->mArgs->push(filePath);
-    command = make<OSCopy>();
-    if (command->execute(this->mArgs) != 0)
-      return -1;
-
-    this->mArgs->clean();
-    this->mArgs->push(NAME_TEMP);
-    command = make<OSRemove>();
-    return command->execute(this->mArgs);
+    return TFCSV::exported(inCSV, file);
   }
 };
 
 class TensorflowCSV : public AbstractCommand {
 private:
   constexpr static Jchar SURRFIX[] = ".xml";
-  constexpr static Jchar SYMBOL_MARK[] = "^";
-  constexpr static Jchar SYMBOL_PATH[] = "$";
 
 public:
   using AbstractCommand::AbstractCommand;
 
-  Jint execute(UP<ICommandArgs> const &v) override {
+  Jint execute(const UP<ICommandArgs> &v) override {
     std::string target;
 
     UP<File> file(new File());
@@ -333,8 +282,9 @@ public:
         auto &&maxY = object.getBndbox().getMaxY();
 
         auto &&newTarget = target.empty() ? name : target;
-        auto &&format = GoogleCloudCSVFormat(width, height, minX, minY, maxX, maxY, filename,
-                                             newTarget, SYMBOL_MARK, SYMBOL_PATH);
+        auto &&format =
+            GoogleCloudCSVFormat(width, height, minX, minY, maxX, maxY, filename, newTarget,
+                                 TFCSVRow::SYMBOL_MARK, TFCSVRow::SYMBOL_PATH);
         csv->add(format);
       }
 
@@ -353,7 +303,7 @@ private:
   constexpr static Jchar MODEL_CROP[] = "crop";
   constexpr static Jchar MODEL_OFFSET[] = "offset";
 
-  static void converCrop(SP<LabelImageXML> const &v) {
+  static void converCrop(const SP<LabelImageXML> &v) {
     LabelImageConver object(v);
 
     object.execute<CROP_TOP_10>();

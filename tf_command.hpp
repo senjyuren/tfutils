@@ -3,18 +3,18 @@
 
 namespace tfutils {
 
-using ICommandArgs = IBuffer<Jchar const *>;
+using ICommandArgs = IBuffer<const Jchar *>;
 
 template <Jint Size> class CommandArgs : public ICommandArgs {
 private:
   Jint mArgsSize;
   Jint mArgsLength;
-  Jchar const *mArgs[Size];
+  const Jchar *mArgs[Size];
 
 public:
   CommandArgs() : mArgsSize(Size), mArgsLength(), mArgs() {}
 
-  void push(Jchar const *v) override {
+  void push(const Jchar *v) override {
     if (this->mArgsLength >= this->mArgsSize)
       return;
 
@@ -22,9 +22,9 @@ public:
     ++this->mArgsLength;
   }
 
-  Jchar const *operator[](Jint v) override { return const_cast<Jchar *>(this->mArgs[v]); }
+  const Jchar *operator[](Jint v) override { return const_cast<Jchar *>(this->mArgs[v]); }
 
-  Jchar const *const *operator*() override { return this->mArgs; };
+  const Jchar *const *operator*() override { return this->mArgs; };
 
   Jint getLength() override { return this->mArgsLength; }
 
@@ -35,20 +35,20 @@ public:
 
 class AbstractCommand {
 private:
-  Jchar const *mName;
+  const Jchar *mName;
 
 public:
   AbstractCommand() : mName() {}
 
-  explicit AbstractCommand(Jchar const *v) : mName(v) {}
+  explicit AbstractCommand(const Jchar *v) : mName(v) {}
 
   virtual ~AbstractCommand() = default;
 
   virtual Jbool isHelp() { return false; }
 
-  virtual Jchar const *getName() { return this->mName; }
+  virtual const Jchar *getName() { return this->mName; }
 
-  virtual Jint execute(UP<ICommandArgs> const &v) = 0;
+  virtual Jint execute(const UP<ICommandArgs> &v) = 0;
 };
 
 class CommandExecutor {
@@ -56,14 +56,14 @@ private:
   constexpr static Jint SIZE_COMMAND_ARGS = 1024;
 
   Jint mArgc;
-  Jchar const *const *mArgs;
+  const Jchar *const *mArgs;
 
   UP<ICommandArgs> mCommandArgs;
   std::list<UP<AbstractCommand>> mCommands;
 
 public:
   template <Jint CacheSize = SIZE_COMMAND_ARGS>
-  CommandExecutor(Jint argc, Jchar const *const *args)
+  CommandExecutor(Jint argc, const Jchar *const *args)
       : mArgc(argc), mArgs(args), mCommandArgs(new CommandArgs<CacheSize>()), mCommands() {}
 
   void add(AbstractCommand *v) { this->mCommands.emplace_back(v); }

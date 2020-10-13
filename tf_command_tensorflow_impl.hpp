@@ -63,7 +63,7 @@ private:
   FILE *mCSVFile;
 
 public:
-  explicit GoogleCloudCSV(Jint all, Jchar const *outfile) : mCSVFile() {
+  explicit GoogleCloudCSV(Jint all, const Jchar *outfile) : mCSVFile() {
     this->mCSVFile = fopen(outfile, FILE_OPERATION_MODEL);
   }
 
@@ -107,7 +107,7 @@ public:
 
   LabelImageXMLSource() : mDatabase() {}
 
-  [[nodiscard]] std::string const &getDatabase() const { return this->mDatabase; }
+  [[nodiscard]] const std::string &getDatabase() const { return this->mDatabase; }
 };
 
 class LabelImageXMLBndbox {
@@ -154,19 +154,19 @@ public:
 
   LabelImageXMLObject() : mName(), mPose(), mTruncated(), mDifficult(), mBndbox() {}
 
-  [[nodiscard]] std::string const &getName() const { return this->mName; }
+  [[nodiscard]] const std::string &getName() const { return this->mName; }
 
-  [[nodiscard]] std::string const &getPose() const { return this->mPose; }
+  [[nodiscard]] const std::string &getPose() const { return this->mPose; }
 
   [[nodiscard]] Jint getTruncated() const { return this->mTruncated; }
 
   [[nodiscard]] Jint getDifficult() const { return this->mDifficult; }
 
-  [[nodiscard]] LabelImageXMLBndbox const &getBndbox() const { return this->mBndbox; }
+  [[nodiscard]] const LabelImageXMLBndbox &getBndbox() const { return this->mBndbox; }
 
-  void setName(std::string const &v) { this->mName = v; }
+  void setName(const std::string &v) { this->mName = v; }
 
-  void setBndbox(LabelImageXMLBndbox const &v) { this->mBndbox = v; }
+  void setBndbox(const LabelImageXMLBndbox &v) { this->mBndbox = v; }
 };
 
 class LabelImageXMLTarget {
@@ -218,7 +218,7 @@ private:
   std::list<LabelImageXMLObject> mObjects;
 
 public:
-  explicit LabelImageXML(std::string const &v)
+  explicit LabelImageXML(const std::string &v)
       : mXml(), mBuffer(), mXmlContent(), mFolder(), mFilename(), mPath(), mSource(), mSize(),
         mSegmented(), mObjects() {
     Jint i = 0;
@@ -281,25 +281,25 @@ public:
       fclose(this->mXml);
   }
 
-  [[nodiscard]] std::string const &getFolder() const { return this->mFolder; }
+  [[nodiscard]] const std::string &getFolder() const { return this->mFolder; }
 
-  [[nodiscard]] std::string const &getFilename() const { return this->mFilename; }
+  [[nodiscard]] const std::string &getFilename() const { return this->mFilename; }
 
-  [[nodiscard]] std::string const &getPath() const { return this->mPath; }
+  [[nodiscard]] const std::string &getPath() const { return this->mPath; }
 
-  [[nodiscard]] LabelImageXMLSource const &getSource() const { return this->mSource; }
+  [[nodiscard]] const LabelImageXMLSource &getSource() const { return this->mSource; }
 
-  [[nodiscard]] LabelImageXMLSize const &getSize() const { return this->mSize; }
+  [[nodiscard]] const LabelImageXMLSize &getSize() const { return this->mSize; }
 
   [[nodiscard]] Jint getSegmented() const { return this->mSegmented; }
 
   std::list<LabelImageXMLObject> &getObjects() { return this->mObjects; }
 
-  void setFilename(std::string const &v) { this->mFilename = v; }
+  void setFilename(const std::string &v) { this->mFilename = v; }
 
-  void setPath(std::string const &v) { this->mPath = v; }
+  void setPath(const std::string &v) { this->mPath = v; }
 
-  void addObject(LabelImageXMLObject const &v) { this->mObjects.push_back(v); }
+  void addObject(const LabelImageXMLObject &v) { this->mObjects.push_back(v); }
 };
 
 enum LabelImageCoverCrop : Juint {
@@ -607,6 +607,225 @@ public:
     fwrite(content.data(), content.size(), 1, this->mOutputFile);
     fflush(this->mOutputFile);
   }
+};
+
+class TFCSVRow {
+private:
+  constexpr static Juint SIZE_REPLACE_PATH = 64;
+
+  std::string mModel;
+  std::string mPath;
+  std::string mTarget;
+
+  Jfloat mX1;
+  Jfloat mY1;
+  Jfloat mX2;
+  Jfloat mY2;
+  Jfloat mX3;
+  Jfloat mY3;
+  Jfloat mX4;
+  Jfloat mY4;
+
+  Jchar mReplacePathBuffer[SIZE_REPLACE_PATH];
+
+public:
+  constexpr static Jchar TARGET_TRAIN[] = "TRAIN";
+  constexpr static Jchar TARGET_VALIDATION[] = "VALIDATION";
+  constexpr static Jchar TARGET_TEST[] = "TEST";
+
+  constexpr static Jchar SYMBOL_MARK[] = "^";
+  constexpr static Jchar SYMBOL_PATH[] = "$";
+
+  explicit TFCSVRow()
+      : mModel(), mPath(), mTarget(), mX1(), mY1(), mX2(), mY2(), mX3(), mY3(), mX4(), mY4(),
+        mReplacePathBuffer() {}
+
+  void replacePath(const std::string &v) {
+    Juint mark = 0;
+
+    auto &&point = this->mPath.find(SYMBOL_PATH) + 1;
+    if (point == std::string::npos)
+      return;
+
+    memcpy(&this->mReplacePathBuffer[mark], v.data(), v.size());
+    mark += v.size();
+    memcpy(&this->mReplacePathBuffer[mark], &this->mPath[point], this->mPath.size() - point);
+    mark += this->mPath.size() - point;
+    this->mReplacePathBuffer[mark] = 0x00;
+    this->mPath = this->mReplacePathBuffer;
+  }
+
+  [[nodiscard]] const std::string &getModel() const { return this->mModel; }
+
+  [[nodiscard]] const std::string &getPath() const { return this->mPath; }
+
+  [[nodiscard]] const std::string &getTarget() const { return this->mTarget; }
+
+  [[nodiscard]] Jfloat getX1() const { return this->mX1; }
+
+  [[nodiscard]] Jfloat getY1() const { return this->mY1; }
+
+  [[nodiscard]] Jfloat getX2() const { return this->mX2; }
+
+  [[nodiscard]] Jfloat getY2() const { return this->mY2; }
+
+  [[nodiscard]] Jfloat getX3() const { return this->mX3; }
+
+  [[nodiscard]] Jfloat getY3() const { return this->mY3; }
+
+  [[nodiscard]] Jfloat getX4() const { return this->mX4; }
+
+  [[nodiscard]] Jfloat getY4() const { return this->mY4; }
+
+  void setModel(const std::string &v) { this->mModel = v; }
+
+  void setPath(const std::string &v) { this->mPath = v; }
+
+  void setTarget(const std::string &v) { this->mTarget = v; }
+
+  void setX1(Jfloat v) { this->mX1 = v; }
+
+  void setY1(Jfloat v) { this->mY1 = v; }
+
+  void setX2(Jfloat v) { this->mX2 = v; }
+
+  void setY2(Jfloat v) { this->mY2 = v; }
+
+  void setX3(Jfloat v) { this->mX3 = v; }
+
+  void setY3(Jfloat v) { this->mY3 = v; }
+
+  void setX4(Jfloat v) { this->mX4 = v; }
+
+  void setY4(Jfloat v) { this->mY4 = v; }
+};
+
+class TFCSV {
+private:
+  constexpr static Juint SIZE_READ_BUFFER = 1024;
+  constexpr static Jchar MODEL_READER_ONLY[] = "rb";
+  constexpr static Jchar MODEL_WRITER_ONLY[] = "wb";
+
+  constexpr static Jchar EXPORTED_FORMAT[] = "%s,%s,%s,%.8f,%.8f,%.8f,%.8f,%.8f,%.8f,%.8f,%.8f\n";
+
+  std::string mPath;
+
+  Jchar mBuffer[SIZE_READ_BUFFER];
+  std::list<TFCSVRow> mRows;
+
+  static void target(TFCSVRow &rowPoint, Jchar *buffer, Jint targetMark, Jint rowPointMark) {
+    if (targetMark == 1)
+      rowPoint.setModel(&buffer[rowPointMark]);
+    else if (targetMark == 2)
+      rowPoint.setPath(&buffer[rowPointMark]);
+    else if (targetMark == 3)
+      rowPoint.setTarget(&buffer[rowPointMark]);
+    else if (targetMark == 4)
+      rowPoint.setX1(std::strtof(&buffer[rowPointMark], nullptr));
+    else if (targetMark == 5)
+      rowPoint.setY1(std::strtof(&buffer[rowPointMark], nullptr));
+    else if (targetMark == 6)
+      rowPoint.setX2(std::strtof(&buffer[rowPointMark], nullptr));
+    else if (targetMark == 7)
+      rowPoint.setY2(std::strtof(&buffer[rowPointMark], nullptr));
+    else if (targetMark == 8)
+      rowPoint.setX3(std::strtof(&buffer[rowPointMark], nullptr));
+    else if (targetMark == 9)
+      rowPoint.setY3(std::strtof(&buffer[rowPointMark], nullptr));
+    else if (targetMark == 10)
+      rowPoint.setX4(std::strtof(&buffer[rowPointMark], nullptr));
+    else if (targetMark == 11)
+      rowPoint.setY4(std::strtof(&buffer[rowPointMark], nullptr));
+  }
+
+public:
+  explicit TFCSV(std::string v) : mPath(move(v)), mBuffer(), mRows() {}
+
+  static Jint exported(const SP<TFCSV> &in, const std::string &out) {
+    if (out.empty())
+      return -1;
+
+    auto &&file = fopen(out.c_str(), MODEL_WRITER_ONLY);
+    if (file == nullptr)
+      return -1;
+
+    for (auto &&row : in->getRows()) {
+      auto &&v = String::format(EXPORTED_FORMAT, row.getModel().c_str(), row.getPath().c_str(),
+                                row.getTarget().c_str(), row.getX1(), row.getY1(), row.getX2(),
+                                row.getY2(), row.getX3(), row.getY3(), row.getX4(), row.getY4());
+      fwrite(v.data(), v.size(), 1, file);
+    }
+
+    if (file != nullptr)
+      fclose(file);
+    return 0;
+  }
+
+  void parse() {
+    Jint i = 0;
+    Jint length = 0;
+    Jint readLen = 0;
+    Jint targetMark = 0;
+    Jint rowPointMark = 0;
+    TFCSVRow rowPoint;
+
+    if (this->mPath.empty())
+      return;
+
+    auto &&file = fopen(this->mPath.c_str(), MODEL_READER_ONLY);
+    if (file == nullptr)
+      return;
+
+    do {
+      if (length == 0)
+        length = sizeof(this->mBuffer);
+
+      readLen += fread(&this->mBuffer[readLen], 1, length, file);
+
+      if (readLen > 0) {
+        targetMark = 0;
+        rowPointMark = 0;
+
+        for (i = 0; i < readLen; ++i) {
+          if (this->mBuffer[i] == ',') {
+            this->mBuffer[i] = 0x00;
+            targetMark++;
+            target(rowPoint, this->mBuffer, targetMark, rowPointMark);
+            rowPointMark = i + 1;
+          } else if (this->mBuffer[i] == '\r') {
+            this->mBuffer[i] = 0x00;
+            targetMark++;
+            target(rowPoint, this->mBuffer, targetMark, rowPointMark);
+            this->mRows.emplace_back(rowPoint);
+            ++i;
+            if (((i + 1) >= static_cast<Jint>(sizeof(this->mBuffer))) ||
+                (this->mBuffer[i + 1] == '\n'))
+              ++i;
+            break;
+          } else if (this->mBuffer[i] == '\n') {
+            this->mBuffer[i] = 0x00;
+            targetMark++;
+            target(rowPoint, this->mBuffer, targetMark, rowPointMark);
+            this->mRows.emplace_back(rowPoint);
+            ++i;
+            break;
+          }
+        }
+
+        length = i;
+        readLen = readLen - length;
+        for (i = 0; i < readLen; ++i)
+          this->mBuffer[i] = (&this->mBuffer[length])[i];
+      }
+    } while (readLen != 0);
+
+    if (file != nullptr)
+      fclose(file);
+  }
+
+  void addRow(const TFCSVRow &v) { this->mRows.emplace_back(v); }
+
+  std::list<TFCSVRow> &getRows() { return this->mRows; }
 };
 
 } // namespace tfutils

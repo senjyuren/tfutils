@@ -7,7 +7,7 @@ class OSRemove : public AbstractCommand {
 public:
   using AbstractCommand::AbstractCommand;
 
-  Jint execute(UP<ICommandArgs> const &v) override {
+  Jint execute(const UP<ICommandArgs> &v) override {
     if (v->isEmpty())
       return -1;
     return File::remove((*v)[0]);
@@ -26,9 +26,9 @@ private:
 public:
   OSCopy() : AbstractCommand(), mBuffer() {}
 
-  explicit OSCopy(Jchar const *v) : AbstractCommand(v), mBuffer() {}
+  explicit OSCopy(const Jchar *v) : AbstractCommand(v), mBuffer() {}
 
-  Jint execute(UP<ICommandArgs> const &v) override {
+  Jint execute(const UP<ICommandArgs> &v) override {
     Jint retLen = 0;
 
     if (v->getLength() < 2)
@@ -64,7 +64,7 @@ class OSMove : public AbstractCommand {
 public:
   using AbstractCommand::AbstractCommand;
 
-  Jint execute(UP<ICommandArgs> const &v) override {
+  Jint execute(const UP<ICommandArgs> &v) override {
     SP<AbstractCommand> cmd;
     cmd = make<OSCopy>();
     if (cmd->execute(v) != 0)

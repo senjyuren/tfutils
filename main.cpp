@@ -14,6 +14,7 @@ private:
       "tensorflow commands                                                 \n"
       "  convert InDirectory OutDirectory [224] [224]                      \n"
       "  replace a.csv gs://                                               \n"
+      "  replaceobject a.csv name value                                    \n"
       "  csv InDirectory a.csv [target]                                    \n"
       "  transform [InDirectory|a.xml] [OutDirectory|b.xml] [crop|offset]  \n"
       "  clone 0.xml 100 [1]                                               \n"
@@ -47,6 +48,7 @@ constexpr Jchar COMMAND_TENSORFLOW_ROTATE[] = "rotate";
 constexpr Jchar COMMAND_TENSORFLOW_REPLACE[] = "replace";
 constexpr Jchar COMMAND_TENSORFLOW_CONVERT[] = "convert";
 constexpr Jchar COMMAND_TENSORFLOW_TRANSFORM[] = "transform";
+constexpr Jchar COMMAND_TENSORFLOW_REPLACE_OBJECT[] = "replaceobject";
 
 Jint main(Jint argc, Jchar *args[]) {
   tfutils::CommandExecutor executor(argc, args);
@@ -68,5 +70,6 @@ Jint main(Jint argc, Jchar *args[]) {
   executor.add(new tfutils::TensorflowConvert(COMMAND_TENSORFLOW_CONVERT));
   executor.add(new tfutils::TensorflowReplace(COMMAND_TENSORFLOW_REPLACE));
   executor.add(new tfutils::TensorflowTransform(COMMAND_TENSORFLOW_TRANSFORM));
+  executor.add(new tfutils::TensorflowReplaceObject(COMMAND_TENSORFLOW_REPLACE_OBJECT));
   return executor.execute();
 }

@@ -431,6 +431,37 @@ public:
   }
 };
 
+class TensorflowReplaceObject : public AbstractCommand {
+public:
+  using AbstractCommand::AbstractCommand;
+
+  Jint execute(const UP<ICommandArgs> &v) override {
+    if (v->getLength() < 3)
+      return -1;
+
+    auto &&file = (*v)[0];
+    auto &&name = (*v)[1];
+    auto &&value = (*v)[2];
+
+    if (std::filesystem::is_directory(file))
+      return -1;
+
+    auto &&csv = make<TFCSV>(file);
+    csv->parse();
+
+    auto &&prog = Program(csv->getRows().size());
+    for (auto &&row : csv->getRows()) {
+      prog.updateOne();
+      if (row.getTarget() != name)
+        continue;
+
+      row.setTarget(value);
+    }
+
+    return TFCSV::exported(csv, file);
+  }
+};
+
 } // namespace tfutils
 
 #endif // TFUTILS_TF_COMMAND_TENSORFLOW_IN_HPP

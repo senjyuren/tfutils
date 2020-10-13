@@ -30,6 +30,7 @@ public:
 
     auto &&get = String::format(COMMAND_GET_LIST, arg, format);
     auto &&num = System(get);
+    num.execute();
     auto &&all = num.getRows();
 
     auto &&prg = Program(all.size());
@@ -60,6 +61,7 @@ public:
 
     auto &&get = String::format(COMMAND_GET_LIST, path, format);
     auto &&num = System(get);
+    num.execute();
     auto &&all = num.getRows();
 
     auto &&prg = Program(all.size());

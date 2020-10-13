@@ -108,7 +108,7 @@ public:
 
 class Program {
 private:
-  constexpr static Jint BASE_NUMBER = 50;
+  constexpr static Jfloat BASE_NUMBER = 50;
 
   constexpr static Jchar CR[] = "\n";
   constexpr static Jchar SB_LEFT[] = "[";
@@ -131,7 +131,8 @@ private:
         printf(US);
     }
 
-    printf(SB_RIGHT, (location % BASE_NUMBER == 0 ? 100 : location % BASE_NUMBER));
+    auto &&v = static_cast<Jint>((location / BASE_NUMBER) * 100);
+    printf(SB_RIGHT, v);
     if (location == BASE_NUMBER)
       printf(CR);
   }

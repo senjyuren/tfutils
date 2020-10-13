@@ -176,7 +176,7 @@ public:
       auto &&command =
           String::format(FORMAT_LINUX_CONVERT, width, height, path.c_str(), output.c_str());
 
-      System sys(command);
+      System(command).execute();
       prog.updateOne();
     }
     return 0;
@@ -230,9 +230,9 @@ public:
       for (auto &&row : classification[kv.first]) {
         auto &&remainder =
             classificationCount[row->getTarget()] / classificationTotal[row->getTarget()];
-        if (remainder < 0.8)
+        if (remainder < 0.6)
           row->setModel(TFCSVRow::TARGET_TRAIN);
-        else if (remainder >= 0.8 && remainder < 0.9)
+        else if (remainder >= 0.6 && remainder < 0.8)
           row->setModel(TFCSVRow::TARGET_VALIDATION);
         else
           row->setModel(TFCSVRow::TARGET_TEST);
